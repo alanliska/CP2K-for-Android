@@ -98,6 +98,8 @@ MODULE qs_environment_types
    USE qs_force_types,                  ONLY: qs_force_type
    USE qs_gcp_types,                    ONLY: qs_gcp_release,&
                                               qs_gcp_type
+   USE qs_harris_types,                 ONLY: harris_env_release,&
+                                              harris_type
    USE qs_kind_types,                   ONLY: qs_kind_type
    USE qs_ks_qmmm_types,                ONLY: qs_ks_qmmm_env_type,&
                                               qs_ks_qmmm_release
@@ -213,101 +215,104 @@ MODULE qs_environment_types
 ! **************************************************************************************************
 
    TYPE qs_environment_type
-      LOGICAL :: qmmm, qmmm_periodic
-      LOGICAL :: requires_mo_derivs
-      LOGICAL :: requires_matrix_vxc
-      LOGICAL :: has_unit_metric
-      LOGICAL :: run_rtp
-      LOGICAL :: linres_run
-      LOGICAL :: calc_image_preconditioner
-      LOGICAL :: do_transport
-      LOGICAL :: single_point_run
-      LOGICAL :: given_embed_pot
-      LOGICAL :: energy_correction
-      REAL(KIND=dp)                                         :: sim_time
-      REAL(KIND=dp) :: start_time, target_time
-      REAL(KIND=dp), DIMENSION(:, :), POINTER               :: image_matrix
-      REAL(KIND=dp), DIMENSION(:), POINTER                  :: image_coeff
-      INTEGER, DIMENSION(:), POINTER                        :: ipiv
-      INTEGER                                               :: sim_step
-      TYPE(ls_scf_env_type), POINTER                        :: ls_scf_env
-      TYPE(almo_scf_env_type), POINTER                      :: almo_scf_env
-      TYPE(transport_env_type), POINTER                     :: transport_env
-      TYPE(cell_type), POINTER                              :: super_cell
-      TYPE(mo_set_type), DIMENSION(:), POINTER            :: mos
-      TYPE(cp_fm_type), DIMENSION(:), POINTER             :: mo_loc_history
-      TYPE(dbcsr_p_type), DIMENSION(:), POINTER             :: mo_derivs
-      TYPE(scf_control_type), POINTER                       :: scf_control
-      TYPE(rel_control_type), POINTER                       :: rel_control
+      LOGICAL :: qmmm = .FALSE., qmmm_periodic = .FALSE.
+      LOGICAL :: requires_mo_derivs = .FALSE.
+      LOGICAL :: requires_matrix_vxc = .FALSE.
+      LOGICAL :: has_unit_metric = .FALSE.
+      LOGICAL :: run_rtp = .FALSE.
+      LOGICAL :: linres_run = .FALSE.
+      LOGICAL :: calc_image_preconditioner = .FALSE.
+      LOGICAL :: do_transport = .FALSE.
+      LOGICAL :: single_point_run = .FALSE.
+      LOGICAL :: given_embed_pot = .FALSE.
+      LOGICAL :: energy_correction = .FALSE.
+      LOGICAL :: harris_method = .FALSE.
+      REAL(KIND=dp)                                         :: sim_time = -1.0_dp
+      REAL(KIND=dp) :: start_time = -1.0_dp, target_time = -1.0_dp
+      REAL(KIND=dp), DIMENSION(:, :), POINTER               :: image_matrix => NULL()
+      REAL(KIND=dp), DIMENSION(:), POINTER                  :: image_coeff => NULL()
+      INTEGER, DIMENSION(:), POINTER                        :: ipiv => NULL()
+      INTEGER                                               :: sim_step = -1
+      TYPE(ls_scf_env_type), POINTER                        :: ls_scf_env => NULL()
+      TYPE(almo_scf_env_type), POINTER                      :: almo_scf_env => NULL()
+      TYPE(transport_env_type), POINTER                     :: transport_env => NULL()
+      TYPE(cell_type), POINTER                              :: super_cell => NULL()
+      TYPE(mo_set_type), DIMENSION(:), POINTER              :: mos => NULL()
+      TYPE(cp_fm_type), DIMENSION(:), POINTER               :: mo_loc_history => NULL()
+      TYPE(dbcsr_p_type), DIMENSION(:), POINTER             :: mo_derivs => NULL()
+      TYPE(scf_control_type), POINTER                       :: scf_control => NULL()
+      TYPE(rel_control_type), POINTER                       :: rel_control => NULL()
       ! ZMP adding variables
-      TYPE(qs_rho_type), POINTER                            :: rho_external
-      TYPE(pw_r3d_rs_type), POINTER                              :: external_vxc
-      TYPE(pw_r3d_rs_type), POINTER                              :: mask
-      TYPE(qs_charges_type), POINTER                        :: qs_charges
-      TYPE(qs_ks_env_type), POINTER                         :: ks_env
-      TYPE(qs_ks_qmmm_env_type), POINTER                    :: ks_qmmm_env
-      TYPE(qmmm_env_qm_type), POINTER                       :: qmmm_env_qm
-      TYPE(qs_wf_history_type), POINTER                     :: wf_history
-      TYPE(qs_scf_env_type), POINTER                        :: scf_env
-      TYPE(qs_matrix_pools_type), POINTER                   :: mpools
-      TYPE(oce_matrix_type), POINTER                        :: oce
-      TYPE(local_rho_type), POINTER                         :: local_rho_set
-      TYPE(hartree_local_type), POINTER                     :: hartree_local
-      TYPE(section_vals_type), POINTER                      :: input
-      TYPE(linres_control_type), POINTER                    :: linres_control
-      TYPE(xas_environment_type), POINTER                   :: xas_env
-      TYPE(cp_ddapc_type), POINTER                          :: cp_ddapc_env
-      TYPE(cp_ddapc_ewald_type), POINTER                    :: cp_ddapc_ewald
-      REAL(KIND=dp), DIMENSION(:, :), POINTER               :: outer_scf_history
-      INTEGER                                               :: outer_scf_ihistory
-      REAL(KIND=dp), DIMENSION(:, :), POINTER               :: gradient_history, &
-                                                               variable_history
-      TYPE(hfx_type), DIMENSION(:, :), POINTER              :: x_data
-      TYPE(et_coupling_type), POINTER                       :: et_coupling
-      TYPE(qs_dftb_pairpot_type), DIMENSION(:, :), POINTER  :: dftb_potential
-      TYPE(admm_type), POINTER                              :: admm_env
-      TYPE(active_space_type), POINTER                      :: active_space
+      TYPE(qs_rho_type), POINTER                            :: rho_external => NULL()
+      TYPE(pw_r3d_rs_type), POINTER                         :: external_vxc => NULL()
+      TYPE(pw_r3d_rs_type), POINTER                         :: mask => NULL()
+      TYPE(qs_charges_type), POINTER                        :: qs_charges => NULL()
+      TYPE(qs_ks_env_type), POINTER                         :: ks_env => NULL()
+      TYPE(qs_ks_qmmm_env_type), POINTER                    :: ks_qmmm_env => NULL()
+      TYPE(qmmm_env_qm_type), POINTER                       :: qmmm_env_qm => NULL()
+      TYPE(qs_wf_history_type), POINTER                     :: wf_history => NULL()
+      TYPE(qs_scf_env_type), POINTER                        :: scf_env => NULL()
+      TYPE(qs_matrix_pools_type), POINTER                   :: mpools => NULL()
+      TYPE(oce_matrix_type), POINTER                        :: oce => NULL()
+      TYPE(local_rho_type), POINTER                         :: local_rho_set => NULL()
+      TYPE(hartree_local_type), POINTER                     :: hartree_local => NULL()
+      TYPE(section_vals_type), POINTER                      :: input => NULL()
+      TYPE(linres_control_type), POINTER                    :: linres_control => NULL()
+      TYPE(xas_environment_type), POINTER                   :: xas_env => NULL()
+      TYPE(cp_ddapc_type), POINTER                          :: cp_ddapc_env => NULL()
+      TYPE(cp_ddapc_ewald_type), POINTER                    :: cp_ddapc_ewald => NULL()
+      REAL(KIND=dp), DIMENSION(:, :), POINTER               :: outer_scf_history => NULL()
+      INTEGER                                               :: outer_scf_ihistory = -1
+      REAL(KIND=dp), DIMENSION(:, :), POINTER               :: gradient_history => NULL(), &
+                                                               variable_history => NULL()
+      TYPE(hfx_type), DIMENSION(:, :), POINTER              :: x_data => NULL()
+      TYPE(et_coupling_type), POINTER                       :: et_coupling => NULL()
+      TYPE(qs_dftb_pairpot_type), DIMENSION(:, :), POINTER  :: dftb_potential => NULL()
+      TYPE(admm_type), POINTER                              :: admm_env => NULL()
+      TYPE(active_space_type), POINTER                      :: active_space => NULL()
       ! LRI
-      TYPE(lri_environment_type), POINTER                   :: lri_env
-      TYPE(lri_density_type), POINTER                       :: lri_density
+      TYPE(lri_environment_type), POINTER                   :: lri_env => NULL()
+      TYPE(lri_density_type), POINTER                       :: lri_density => NULL()
+      ! Harris model
+      TYPE(harris_type), POINTER                            :: harris_env => NULL()
       ! Energy correction
-      TYPE(energy_correction_type), POINTER                 :: ec_env
+      TYPE(energy_correction_type), POINTER                 :: ec_env => NULL()
       ! Excited States
-      LOGICAL                                               :: excited_state
-      TYPE(excited_energy_type), POINTER                    :: exstate_env
+      LOGICAL                                               :: excited_state = .FALSE.
+      TYPE(excited_energy_type), POINTER                    :: exstate_env => NULL()
       ! Empirical dispersion
-      TYPE(qs_dispersion_type), POINTER                     :: dispersion_env
+      TYPE(qs_dispersion_type), POINTER                     :: dispersion_env => NULL()
       ! Empirical geometrical BSSE correction
-      TYPE(qs_gcp_type), POINTER                            :: gcp_env
+      TYPE(qs_gcp_type), POINTER                            :: gcp_env => NULL()
       ! Semi-empirical and DFTB types
-      TYPE(ewald_environment_type), POINTER                 :: ewald_env
-      TYPE(ewald_pw_type), POINTER                          :: ewald_pw
+      TYPE(ewald_environment_type), POINTER                 :: ewald_env => NULL()
+      TYPE(ewald_pw_type), POINTER                          :: ewald_pw => NULL()
       ! Semi-empirical types
-      TYPE(se_taper_type), POINTER                          :: se_taper
-      TYPE(semi_empirical_si_type), POINTER                 :: se_store_int_env
-      TYPE(nddo_mpole_type), POINTER                        :: se_nddo_mpole
-      TYPE(fist_nonbond_env_type), POINTER                  :: se_nonbond_env
-      TYPE(rt_prop_type), POINTER                           :: rtp
-      TYPE(efield_berry_type), POINTER                      :: efield
+      TYPE(se_taper_type), POINTER                          :: se_taper => NULL()
+      TYPE(semi_empirical_si_type), POINTER                 :: se_store_int_env => NULL()
+      TYPE(nddo_mpole_type), POINTER                        :: se_nddo_mpole => NULL()
+      TYPE(fist_nonbond_env_type), POINTER                  :: se_nonbond_env => NULL()
+      TYPE(rt_prop_type), POINTER                           :: rtp => NULL()
+      TYPE(efield_berry_type), POINTER                      :: efield => NULL()
       ! a history for the broyden ot
-      REAL(KIND=dp)                                         :: broyden_adaptive_sigma
+      REAL(KIND=dp)                                         :: broyden_adaptive_sigma = -1.0_dp
       TYPE(mp2_type), POINTER                               :: mp2_env => NULL()
       TYPE(post_scf_bandstructure_type), POINTER                                :: bs_env => NULL()
-      TYPE(kg_environment_type), POINTER                    :: kg_env
+      TYPE(kg_environment_type), POINTER                    :: kg_env => NULL()
       TYPE(wannier_centres_type), POINTER, DIMENSION(:)     :: WannierCentres => NULL()
       TYPE(molecular_scf_guess_env_type), POINTER           :: molecular_scf_guess_env => NULL()
       ! Subsystem densities
-      TYPE(qs_rho_p_type), DIMENSION(:), POINTER            :: subsys_dens
+      TYPE(qs_rho_p_type), DIMENSION(:), POINTER            :: subsys_dens => NULL()
       ! Embedding potential
-      TYPE(pw_r3d_rs_type), POINTER                              :: embed_pot
-      TYPE(pw_r3d_rs_type), POINTER                              :: spin_embed_pot
+      TYPE(pw_r3d_rs_type), POINTER                         :: embed_pot => NULL()
+      TYPE(pw_r3d_rs_type), POINTER                         :: spin_embed_pot => NULL()
       ! Polarizability tensor
-      TYPE(polar_env_type), POINTER                         :: polar_env
+      TYPE(polar_env_type), POINTER                         :: polar_env => NULL()
       ! Resp charges
       REAL(KIND=dp), DIMENSION(:), POINTER                  :: rhs => NULL()
-      REAL(KIND=dp)                                         :: total_zeff_corr, surface_dipole_moment
-      LOGICAL                                               :: surface_dipole_switch_off
-      TYPE(mo_set_type), DIMENSION(:), POINTER            :: mos_last_converged
+      REAL(KIND=dp)                                         :: total_zeff_corr = -1.0_dp, surface_dipole_moment = -1.0_dp
+      LOGICAL                                               :: surface_dipole_switch_off = .FALSE.
+      TYPE(mo_set_type), DIMENSION(:), POINTER              :: mos_last_converged => NULL()
    END TYPE qs_environment_type
 
 CONTAINS
@@ -441,6 +446,7 @@ CONTAINS
 !> \param lri_density ...
 !> \param exstate_env ...
 !> \param ec_env ...
+!> \param harris_env ...
 !> \param dispersion_env ...
 !> \param gcp_env ...
 !> \param vee ...
@@ -494,7 +500,7 @@ CONTAINS
                          neighbor_list_id, linres_control, xas_env, virial, cp_ddapc_env, cp_ddapc_ewald, &
                          outer_scf_history, outer_scf_ihistory, x_data, et_coupling, dftb_potential, results, &
                          se_taper, se_store_int_env, se_nddo_mpole, se_nonbond_env, admm_env, &
-                         lri_env, lri_density, exstate_env, ec_env, dispersion_env, gcp_env, vee, &
+                         lri_env, lri_density, exstate_env, ec_env, harris_env, dispersion_env, gcp_env, vee, &
                          rho_external, external_vxc, mask, mp2_env, bs_env, kg_env, &
                          WannierCentres, atprop, ls_scf_env, do_transport, transport_env, v_hartree_rspace, &
                          s_mstruct_changed, rho_changed, potential_changed, forces_up_to_date, mscfg_env, almo_scf_env, &
@@ -605,6 +611,7 @@ CONTAINS
       TYPE(lri_density_type), OPTIONAL, POINTER          :: lri_density
       TYPE(excited_energy_type), OPTIONAL, POINTER       :: exstate_env
       TYPE(energy_correction_type), OPTIONAL, POINTER    :: ec_env
+      TYPE(harris_type), OPTIONAL, POINTER               :: harris_env
       TYPE(qs_dispersion_type), OPTIONAL, POINTER        :: dispersion_env
       TYPE(qs_gcp_type), OPTIONAL, POINTER               :: gcp_env
       TYPE(pw_r3d_rs_type), OPTIONAL, POINTER            :: vee
@@ -675,6 +682,7 @@ CONTAINS
       IF (PRESENT(se_nonbond_env)) se_nonbond_env => qs_env%se_nonbond_env
       IF (PRESENT(lri_env)) lri_env => qs_env%lri_env
       IF (PRESENT(lri_density)) lri_density => qs_env%lri_density
+      IF (PRESENT(harris_env)) harris_env => qs_env%harris_env
       IF (PRESENT(ec_env)) ec_env => qs_env%ec_env
       IF (PRESENT(exstate_env)) exstate_env => qs_env%exstate_env
       IF (PRESENT(dispersion_env)) dispersion_env => qs_env%dispersion_env
@@ -887,6 +895,7 @@ CONTAINS
       NULLIFY (qs_env%admm_env)
       NULLIFY (qs_env%efield)
       NULLIFY (qs_env%lri_env)
+      NULLIFY (qs_env%harris_env)
       NULLIFY (qs_env%ec_env)
       NULLIFY (qs_env%exstate_env)
       NULLIFY (qs_env%lri_density)
@@ -895,7 +904,6 @@ CONTAINS
       NULLIFY (qs_env%mp2_env)
       NULLIFY (qs_env%bs_env)
       NULLIFY (qs_env%kg_env)
-      NULLIFY (qs_env%ec_env)
       NULLIFY (qs_env%WannierCentres)
 
       qs_env%outer_scf_ihistory = 0
@@ -997,6 +1005,7 @@ CONTAINS
 !> \param exstate_env ...
 !> \param ec_env ...
 !> \param dispersion_env ...
+!> \param harris_env ...
 !> \param gcp_env ...
 !> \param mp2_env ...
 !> \param bs_env ...
@@ -1029,7 +1038,7 @@ CONTAINS
                          outer_scf_history, outer_scf_ihistory, x_data, et_coupling, dftb_potential, &
                          se_taper, se_store_int_env, se_nddo_mpole, se_nonbond_env, admm_env, ls_scf_env, &
                          do_transport, transport_env, lri_env, lri_density, exstate_env, ec_env, dispersion_env, &
-                         gcp_env, mp2_env, bs_env, kg_env, force, &
+                         harris_env, gcp_env, mp2_env, bs_env, kg_env, force, &
                          kpoints, WannierCentres, almo_scf_env, gradient_history, variable_history, embed_pot, &
                          spin_embed_pot, polar_env, mos_last_converged, rhs)
 
@@ -1091,6 +1100,7 @@ CONTAINS
       TYPE(excited_energy_type), OPTIONAL, POINTER       :: exstate_env
       TYPE(energy_correction_type), OPTIONAL, POINTER    :: ec_env
       TYPE(qs_dispersion_type), OPTIONAL, POINTER        :: dispersion_env
+      TYPE(harris_type), OPTIONAL, POINTER               :: harris_env
       TYPE(qs_gcp_type), OPTIONAL, POINTER               :: gcp_env
       TYPE(mp2_type), OPTIONAL, POINTER                  :: mp2_env
       TYPE(post_scf_bandstructure_type), OPTIONAL, &
@@ -1322,6 +1332,7 @@ CONTAINS
       IF (PRESENT(admm_env)) qs_env%admm_env => admm_env
       IF (PRESENT(lri_env)) qs_env%lri_env => lri_env
       IF (PRESENT(lri_density)) qs_env%lri_density => lri_density
+      IF (PRESENT(harris_env)) qs_env%harris_env => harris_env
       IF (PRESENT(ec_env)) qs_env%ec_env => ec_env
       IF (PRESENT(exstate_env)) qs_env%exstate_env => exstate_env
       IF (PRESENT(dispersion_env)) qs_env%dispersion_env => dispersion_env
@@ -1548,6 +1559,9 @@ CONTAINS
          CALL lri_density_release(qs_env%lri_density)
          DEALLOCATE (qs_env%lri_density)
       END IF
+      IF (ASSOCIATED(qs_env%harris_env)) THEN
+         CALL harris_env_release(qs_env%harris_env)
+      END IF
       IF (ASSOCIATED(qs_env%ec_env)) THEN
          CALL ec_env_release(qs_env%ec_env)
       END IF
@@ -1764,6 +1778,9 @@ CONTAINS
       IF (ASSOCIATED(qs_env%lri_density)) THEN
          CALL lri_density_release(qs_env%lri_density)
          DEALLOCATE (qs_env%lri_density)
+      END IF
+      IF (ASSOCIATED(qs_env%harris_env)) THEN
+         CALL harris_env_release(qs_env%harris_env)
       END IF
       IF (ASSOCIATED(qs_env%ec_env)) THEN
          CALL ec_env_release(qs_env%ec_env)

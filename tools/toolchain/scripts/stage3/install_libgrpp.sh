@@ -6,8 +6,8 @@
 [ "${BASH_SOURCE[0]}" ] && SCRIPT_NAME="${BASH_SOURCE[0]}" || SCRIPT_NAME=$0
 SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_NAME")/.." && pwd -P)"
 
-libgrpp_ver="20231215"
-libgrpp_sha="3b0f55795a0c2699b81f403b1c81c56e26332f780a87655410745a0ccb51ef2f"
+libgrpp_ver="20231225"
+libgrpp_sha="64d157f1dc95815096b1fd437a5851abeb3425929cf7b2092bf8262db9c5e33d"
 libgrpp_pkg="libgrpp-main-${libgrpp_ver}.zip"
 
 source "${SCRIPT_DIR}"/common_vars.sh
@@ -79,8 +79,11 @@ case "${with_libgrpp}" in
 esac
 if [ "$with_libgrpp" != "__DONTUSE__" ]; then
   LIBGRPP_LIBS="-llibgrpp"
+  cat << EOF > "${BUILDDIR}/setup_libgrpp"
+export LIBGRPP_VER="${libgrpp_ver}"
+EOF
   if [ "$with_libgrpp" != "__SYSTEM__" ]; then
-    cat << EOF > "${BUILDDIR}/setup_libgrpp"
+    cat << EOF >> "${BUILDDIR}/setup_libgrpp"
 prepend_path LD_LIBRARY_PATH "$pkg_install_dir/lib"
 prepend_path LD_RUN_PATH "$pkg_install_dir/lib"
 prepend_path LIBRARY_PATH "$pkg_install_dir/lib"

@@ -42,10 +42,6 @@ KEEPALIVE_SKIP_DIRS = [
 ]
 
 
-def cp2k_stem() -> str:
-    return os.getenv("CP2K_STEM", "cp2k")
-
-
 # ======================================================================================
 async def main() -> None:
     parser = argparse.ArgumentParser(description="Runs CP2K regression test suite.")
@@ -55,7 +51,8 @@ async def main() -> None:
     parser.add_argument("--num_gpus", type=int, default=0)
     parser.add_argument("--timeout", type=int, default=400)
     parser.add_argument("--maxerrors", type=int, default=50)
-    parser.add_argument("--mpiexec", default="mpiexec --bind-to none")
+    help = "Template for launching MPI jobs, {N} is replaced by number of processors."
+    parser.add_argument("--mpiexec", default="mpiexec -n {N} --bind-to none", help=help)
     help = "Runs only the first test of each directory."
     parser.add_argument("--smoketest", dest="smoketest", action="store_true", help=help)
     help = "Runs tests under Valgrind memcheck. Best used together with --keepalive."
@@ -70,7 +67,7 @@ async def main() -> None:
     parser.add_argument("--workbasedir", type=Path)
     parser.add_argument("--skip_unittests", action="store_true")
     parser.add_argument("--skip_regtests", action="store_true")
-    parser.add_argument("arch")
+    parser.add_argument("binary_dir", type=Path)
     parser.add_argument("version")
     cfg = Config(parser.parse_args())
 
@@ -78,9 +75,7 @@ async def main() -> None:
     start_time = time.perf_counter()
 
     # Query CP2K binary for feature flags.
-    version_bytes, _ = await (
-        await cfg.launch_exe(cp2k_stem(), "--version")
-    ).communicate()
+    version_bytes, _ = await (await cfg.launch_exe("cp2k", "--version")).communicate()
     version_output = version_bytes.decode("utf8", errors="replace")
     flags_line = re.search(r" cp2kflags:(.*)\n", version_output)
     if not flags_line:
@@ -102,7 +97,7 @@ async def main() -> None:
     print(f"Keepalive:      {cfg.keepalive}")
     print(f"Flag slow:      {cfg.flag_slow}")
     print(f"Debug:          {cfg.debug}")
-    print(f"ARCH:           {cfg.arch}")
+    print(f"Binary dir:     {cfg.binary_dir}")
     print(f"VERSION:        {cfg.version}")
     print(f"Flags:          " + ",".join(flags))
 
@@ -202,17 +197,22 @@ async def main() -> None:
         print(f'PlotPoint: name="{p}th_percentile", plot="timings", ', end="")
         print(f'label="{p}th %ile", y={v:.2f}, yerr=0.0')
 
-    print("\n----------------------------- Slow Tests -------------------------------")
-    slow_test_threshold = 2 * percentile(timings, 0.95)
-    print(f"Duration threshold (2x 95th %ile): {slow_test_threshold:.2f} sec")
-    slow_tests_all = [r for r in all_results if r.duration > slow_test_threshold]
-    slow_tests = [r for r in slow_tests_all if r.fullname not in cfg.slow_suppressions]
-    num_slow_suppressed = len(slow_tests_all) - len(slow_tests)
-    print(f"Found {len(slow_tests)} slow tests ({num_slow_suppressed} suppressed):")
-    for r in slow_tests:
-        print(f"    {r.fullname :<80s} ( {r.duration:6.2f} sec)")
-    if not cfg.flag_slow:
-        slow_tests = []
+    if cfg.flag_slow:
+        print("\n" + "-" * 15 + "--------------- Slow Tests ---------------" + "-" * 15)
+        slow_test_threshold = 2 * percentile(timings, 0.95)
+        maybe_slow = [r for r in all_results if r.duration > slow_test_threshold]
+        suppressions = cfg.slow_suppressions
+        slow_reruns: List[str] = []
+        for batch in {r.batch for r in maybe_slow if r.fullname not in suppressions}:
+            print(f"Re-running {batch.name} to avoid false positives.")
+            res = (await run_batch(batch, cfg)).results
+            slow_reruns += [r.fullname for r in res if r.duration > slow_test_threshold]
+        slow_tests = [r for r in maybe_slow if r.fullname in slow_reruns]
+        num_suppressed = len([r for r in maybe_slow if r.fullname in suppressions])
+        print(f"Duration threshold (2x 95th %ile): {slow_test_threshold:.2f} sec")
+        print(f"Found {len(slow_tests)} slow tests ({num_suppressed} suppressed):")
+        for r in slow_tests:
+            print(f"    {r.fullname :<80s} ( {r.duration:6.2f} sec)")
 
     print("\n------------------------------- Summary --------------------------------")
     total_duration = time.perf_counter() - start_time
@@ -221,7 +221,7 @@ async def main() -> None:
     num_failed = sum(r.status in failure_modes for r in all_results)
     num_wrong = sum(r.status == "WRONG RESULT" for r in all_results)
     num_ok = sum(r.status == "OK" for r in all_results)
-    status_ok = (num_ok == num_tests) and (not slow_tests)
+    status_ok = (num_ok == num_tests) and (not cfg.flag_slow or not slow_tests)
     print(f"Number of FAILED  tests {num_failed}")
     print(f"Number of WRONG   tests {num_wrong}")
     print(f"Number of CORRECT tests {num_ok}")
@@ -229,7 +229,7 @@ async def main() -> None:
     summary = f"\nSummary: correct: {num_ok} / {num_tests}"
     summary += f"; wrong: {num_wrong}" if num_wrong > 0 else ""
     summary += f"; failed: {num_failed}" if num_failed > 0 else ""
-    summary += f"; slow: {len(slow_tests)}" if slow_tests else ""
+    summary += f"; slow: {len(slow_tests)}" if cfg.flag_slow and slow_tests else ""
     summary += f"; {total_duration/60.0:.0f}min"
     print(summary)
     print("Status: " + ("OK" if status_ok else "FAILED") + "\n")
@@ -249,12 +249,14 @@ class Config:
         self.num_workers = int(args.maxtasks / self.ompthreads / self.mpiranks)
         self.workers = Semaphore(self.num_workers)
         self.cp2k_root = Path(__file__).resolve().parent.parent
-        self.mpiexec = args.mpiexec.split()
+        self.mpiexec = args.mpiexec
+        if "{N}" not in self.mpiexec:  # backwards compatibility
+            self.mpiexec = f"{self.mpiexec} ".replace(" ", " -n {N} ", 1).strip()
         self.smoketest = args.smoketest
         self.valgrind = args.valgrind
         self.keepalive = args.keepalive
         self.flag_slow = args.flagslow
-        self.arch = args.arch
+        self.binary_dir = args.binary_dir.resolve()
         self.version = args.version
         self.debug = args.debug
         self.max_errors = args.maxerrors
@@ -263,12 +265,8 @@ class Config:
         self.skip_unittests = args.skip_unittests
         self.skip_regtests = args.skip_regtests
         datestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        leaf_dir = f"TEST-{args.arch}-{args.version}-{datestamp}"
-        self.work_base_dir = (
-            args.workbasedir / leaf_dir
-            if args.workbasedir
-            else self.cp2k_root / "regtesting" / args.arch / args.version / leaf_dir
-        )
+        leaf_dir = f"TEST-{args.version}-{datestamp}"
+        self.work_base_dir = (args.workbasedir or args.binary_dir).resolve() / leaf_dir
         self.error_summary = self.work_base_dir / "error_summary"
 
         # Parse suppression files.
@@ -308,13 +306,11 @@ class Config:
         if exe_path.is_absolute():
             cmd = [str(exe_path)]
         else:
-            cmd = [
-                str(self.cp2k_root / "exe" / self.arch / f"{exe_stem}.{self.version}")
-            ]
+            cmd = [str(self.binary_dir / f"{exe_stem}.{self.version}")]
         if self.valgrind:
             cmd = ["valgrind", "--error-exitcode=42", "--exit-on-first-error=yes"] + cmd
         if self.use_mpi:
-            cmd = [self.mpiexec[0], "-n", str(self.mpiranks)] + self.mpiexec[1:] + cmd
+            cmd = self.mpiexec.format(N=self.mpiranks).split() + cmd
         if self.debug:
             print(f"Creating subprocess: {cmd} {args}")
         return asyncio.create_subprocess_exec(
@@ -446,9 +442,7 @@ class Cp2kShell:
 
     async def start(self) -> None:
         assert self._child is None
-        self._child = await self.cfg.launch_exe(
-            cp2k_stem(), "--shell", cwd=self.workdir
-        )
+        self._child = await self.cfg.launch_exe("cp2k", "--shell", cwd=self.workdir)
         await self.ready()
         await self.sendline("HARSH")  # With harsh mode any error leads to an abort.
         await self.ready()
@@ -593,7 +587,7 @@ async def run_regtests_classic(batch: Batch, cfg: Config) -> List[TestResult]:
     for test in batch.regtests:
         start_time = time.perf_counter()
         start_dirsize = dirsize(batch.workdir)
-        child = await cfg.launch_exe(cp2k_stem(), test.inp_fn, cwd=batch.workdir)
+        child = await cfg.launch_exe("cp2k", test.inp_fn, cwd=batch.workdir)
         output, returncode, timed_out = await wait_for_child_process(child, cfg.timeout)
         test.out_path.write_bytes(output)
         duration = time.perf_counter() - start_time

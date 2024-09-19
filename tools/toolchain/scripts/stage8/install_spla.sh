@@ -6,8 +6,8 @@
 [ "${BASH_SOURCE[0]}" ] && SCRIPT_NAME="${BASH_SOURCE[0]}" || SCRIPT_NAME=$0
 SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_NAME")/.." && pwd -P)"
 
-spla_ver="1.6.0"
-spla_sha256="917c24e2a768499967eba47b2cc2475df9fabee327b7821d24970b6a08055c09"
+spla_ver="1.6.1"
+spla_sha256="62b51e6ce05c41cfc1c6f6600410f9549a209c50f0331e1db41047f94493e02f"
 source "${SCRIPT_DIR}"/common_vars.sh
 source "${SCRIPT_DIR}"/tool_kit.sh
 source "${SCRIPT_DIR}"/signal_trap.sh
@@ -44,6 +44,7 @@ case "${with_spla}" in
         -DCMAKE_INSTALL_LIBDIR=lib \
         -DCMAKE_VERBOSE_MAKEFILE=ON \
         -DCMAKE_BUILD_TYPE="RelWithDebInfo" \
+        -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
         -DSPLA_FORTRAN=ON \
         -DSPLA_INSTALL=ON \
         -DSPLA_STATIC=ON \
@@ -63,6 +64,7 @@ case "${with_spla}" in
           -DCMAKE_VERBOSE_MAKEFILE=ON \
           -DCMAKE_BUILD_TYPE="RelWithDebInfo" \
           -DSPLA_FORTRAN=ON \
+          -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
           -DSPLA_INSTALL=ON \
           -DSPLA_STATIC=ON \
           -DSPLA_GPU_BACKEND=CUDA \
@@ -77,7 +79,7 @@ case "${with_spla}" in
       if [ "$ENABLE_HIP" = "__TRUE__" ]; then
 
         case "${GPUVER}" in
-          K20X | K40 | K80 | P100 | V100 | A100 | A40)
+          K20X | K40 | K80 | P100 | V100 | A100 | A40 | H100)
             [ -d build-cuda ] && rm -rf "build-cuda"
             mkdir build-cuda
             cd build-cuda
@@ -89,6 +91,7 @@ case "${with_spla}" in
               -DSPLA_FORTRAN=ON \
               -DSPLA_INSTALL=ON \
               -DSPLA_STATIC=ON \
+              -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
               -DSPLA_GPU_BACKEND=CUDA \
               .. \
               > cmake.log 2>&1 || tail -n ${LOG_LINES} cmake.log
@@ -109,6 +112,7 @@ case "${with_spla}" in
               -DSPLA_FORTRAN=ON \
               -DSPLA_INSTALL=ON \
               -DSPLA_STATIC=ON \
+              -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
               -DSPLA_GPU_BACKEND=ROCM \
               .. \
               > cmake.log 2>&1 || tail -n ${LOG_LINES} cmake.log
@@ -167,6 +171,7 @@ prepend_path CMAKE_PREFIX_PATH "$pkg_install_dir"
 EOF
   fi
   cat << EOF >> "${BUILDDIR}/setup_spla"
+export SPLA_VER="${spla_ver}"
 export SPLA_CFLAGS="${SPLA_CFLAGS}"
 export SPLA_LDFLAGS="${SPLA_LDFLAGS}"
 export SPLA_CUDA_LDFLAGS="${SPLA_CUDA_LDFLAGS}"
@@ -174,9 +179,8 @@ export SPLA_HIP_LDFLAGS="${SPLA_HIP_LDFLAGS}"
 export CP_DFLAGS="\${CP_DFLAGS} IF_HIP(-D__OFFLOAD_GEMM|) IF_CUDA(-D__OFFLOAD_GEMM|) ${OFFLOAD_DFLAGS} IF_MPI(-D__SPLA|)"
 export CP_CFLAGS="\${CP_CFLAGS} ${SPLA_CFLAGS}"
 export SPLA_LIBRARY="-lspla"
-export SPLA_ROOT="$pkg_install_dir"
-export SPLA_INCLUDE_DIR="$pkg_install_dir/include/spla"
-export SPLA_VERSION=${spla-ver}
+export SPLA_ROOT="${pkg_install_dir}"
+export SPLA_INCLUDE_DIR="${pkg_install_dir}/include/spla"
 export CP_LIBS="IF_MPI(${SPLA_LIBS}|) \${CP_LIBS}"
 EOF
   if [ "$ENABLE_HIP" = "__TRUE__" ]; then

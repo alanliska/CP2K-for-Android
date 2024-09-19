@@ -70,7 +70,7 @@ MODULE xtb_matrices
    USE particle_types,                  ONLY: particle_type
    USE qs_charge_mixing,                ONLY: charge_mixing
    USE qs_condnum,                      ONLY: overlap_condnum
-   USE qs_dispersion_pairpot,           ONLY: d3_cnumber,&
+   USE qs_dispersion_cnum,              ONLY: d3_cnumber,&
                                               dcnum_distribute,&
                                               dcnum_type
    USE qs_dispersion_types,             ONLY: qs_dispersion_type
@@ -111,9 +111,9 @@ MODULE xtb_matrices
    IMPLICIT NONE
 
    TYPE neighbor_atoms_type
-      REAL(KIND=dp), DIMENSION(:, :), POINTER     :: coord
-      REAL(KIND=dp), DIMENSION(:), POINTER        :: rab
-      INTEGER, DIMENSION(:), POINTER              :: katom
+      REAL(KIND=dp), DIMENSION(:, :), POINTER     :: coord => NULL()
+      REAL(KIND=dp), DIMENSION(:), POINTER        :: rab => NULL()
+      INTEGER, DIMENSION(:), POINTER              :: katom => NULL()
    END TYPE neighbor_atoms_type
 
    PRIVATE

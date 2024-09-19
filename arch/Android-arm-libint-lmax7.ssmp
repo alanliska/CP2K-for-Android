@@ -1,0 +1,80 @@
+#!/bin/bash
+#
+# CP2K (GNU aarch64) arch file for a serial static ARM64 binary
+#
+# Tested with: GNU 12.3.0, FFTW 3.3.10, LIBINT 2.6.0, LIBVORI 220621,
+#              LIBXC 6.2.2, OpenBLAS 0.3.24, SPGLIB 1.16.2
+#
+# Usage: Source this arch file and then run make as instructed.
+#
+# Last update: 22.09.2023
+#
+# 
+
+CC             := /path/to/gcc
+CXX            := /path/to/g++
+FC             := /path/to/gfortran
+LD             := /path/to/gfortran
+AR             := /path/to/ar -r
+
+CFLAGS         := -O2 -fopenmp -fopenmp-simd -ftree-vectorize -funroll-loops -g -pie -fPIC
+
+DFLAGS         += -D__MAX_CONTR=7
+# following flag is important for 32 bit systems
+DFLAGS         += -D__NO_STATM_ACCESS
+# following flag is necessary for Android cross-compilation
+DFLAGS         += -D__GNUC__=8
+
+INSTALL_PATH   := /path/to/install
+
+   LIBXC_INC      := $(INSTALL_PATH)/libxc_arm/include
+   LIBXC_LIB      := $(INSTALL_PATH)/libxc_arm/lib
+   CFLAGS         += -I$(LIBXC_INC)
+   DFLAGS         += -D__LIBXC
+   LIBS           += $(LIBXC_LIB)/libxcf03.a
+   LIBS           += $(LIBXC_LIB)/libxcf90.a
+   LIBS           += $(LIBXC_LIB)/libxc.a
+
+   LIBINT_INC     := $(INSTALL_PATH)/libint7_arm/include
+   LIBINT_LIB     := $(INSTALL_PATH)/libint7_arm/lib
+   CFLAGS         += -I$(LIBINT_INC)
+   DFLAGS         += -D__LIBINT
+   LIBS           += $(LIBINT_LIB)/libint2.a
+
+   FFTW_INC       := $(INSTALL_PATH)/fftw_arm/include
+   FFTW_LIB       := $(INSTALL_PATH)/fftw_arm/lib
+   CFLAGS         += -I$(FFTW_INC)
+   DFLAGS         += -D__FFTW3
+   LIBS           += $(FFTW_LIB)/libfftw3_omp.a
+   LIBS           += $(FFTW_LIB)/libfftw3_threads.a
+   LIBS           += $(FFTW_LIB)/libfftw3.a
+
+   LAPACK_LIB   := $(INSTALL_PATH)/lapack_arm
+   LIBS           += $(LAPACK_LIB)/liblapack.a
+
+   BLAS_LIB   := $(INSTALL_PATH)/blas_arm
+   LIBS           += $(BLAS_LIB)/libblas.a
+CFLAGS         += $(DFLAGS) $(CFLAGS_DEBUG)
+
+FCFLAGS        := $(CFLAGS) $(FCFLAGS_DEBUG) $(WFLAGS)
+ifeq ($(shell [ $(shell gcc -dumpversion | cut -d. -f1) -gt 9 ] && echo yes), yes)
+   FCFLAGS        += -fallow-argument-mismatch
+endif
+FCFLAGS        += -fbacktrace
+FCFLAGS        += -ffree-form
+FCFLAGS        += -ffree-line-length-none
+FCFLAGS        += -fno-omit-frame-pointer
+FCFLAGS        += -std=f2008
+FCFLAGS        += -fallow-argument-mismatch
+FCFLAGS        += -ftree-vectorize
+
+# The LeakSanitizer does not work with static linking
+ifeq ($(DO_CHECKS), yes)
+   LDFLAGS        += $(FCFLAGS)
+else
+   LDFLAGS        += $(FCFLAGS) -static -pie
+endif
+
+LIBS           += -Wl,--whole-archive -pthread -Wl,--no-whole-archive -ldl -lstdc++ -lz
+
+# End

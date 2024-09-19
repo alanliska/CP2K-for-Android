@@ -7,12 +7,11 @@
 
 ## Compilation
 
-open arch/Android.ssmp and arch/Android-static.ssmp
+open arch/Android-[desired architecture]-libint-lmax[number].ssmp
 edit the paths to cross-compilers and precompiled dependencies (BLAS, LAPACK, FFTW, LIBINT, and LIBXC)
 
 ```bash
-$ make -j8 ARCH=Android VERSION=ssmp OMP_NUM_THREADS=1
-$ make -j8 ARCH=Android-static VERSION=ssmp OMP_NUM_THREADS=1
+$ make -j8 ARCH=Android-[desired architecture]-libint-lmax[number] VERSION=ssmp OMP_NUM_THREADS=1
 ```
 
 # ORIGINAL DESCRIPTION:

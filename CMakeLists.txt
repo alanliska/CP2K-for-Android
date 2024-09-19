@@ -37,7 +37,7 @@ project(
   cp2k
   DESCRIPTION "CP2K"
   HOMEPAGE_URL "https://www.cp2k.org"
-  VERSION "2024.1"
+  VERSION "2024.3"
   LANGUAGES Fortran C CXX)
 
 list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake/modules")
@@ -92,16 +92,13 @@ endforeach()
 # =================================================================================================
 # OPTIONS
 
-# option(CP2K_BUILD_DBCSR "Build dbcsr before building cp2k" OFF)
-option(CP2K_ENABLE_REGTESTS
-       "Enable installation of the binaries for running regtests afterwards"
-       OFF)
 option(CMAKE_POSITION_INDEPENDENT_CODE "Enable position independent code" ON)
 option(CP2K_ENABLE_CONSISTENCY_CHECKS
        "Check that the list of compiled files and files contained in src match"
        OFF)
 option(CP2K_DEBUG_MODE "Enable several additional options for debugging cp2k."
        OFF)
+option(CP2K_USE_DFTD4 "Enable dispersion coorections DFTD4" OFF)
 option(CP2K_USE_SIRIUS "Enable plane wave dft calculations with sirius" OFF)
 option(CP2K_USE_FFTW3 "Use fftw3 for the calculating fast fourier transforms"
        ON)
@@ -126,8 +123,7 @@ option(
   CP2K_USE_DLAF
   "Use DLA-Future for Cholesky decompositions and the solution of eigenvalue problems"
   OFF)
-option(CP2K_USE_LIBXSMM "Use libxsmm for small gemms (supports x86 platforms)"
-       OFF)
+option(CP2K_USE_LIBXSMM "Use libxsmm for small gemms" OFF)
 # option(CP2K_USE_LIBGRPP "Use libgrpp" OFF)
 option(BUILD_SHARED_LIBS "Build cp2k shared library" ON)
 option(
@@ -192,6 +188,7 @@ endif()
 if(${cp2k_build_options_up} STREQUAL "FULL")
   set(CP2K_USE_FFTW3 ON)
   set(CP2K_USE_MPI ON)
+  set(CP2K_USE_DFTD4 ON)
   set(CP2K_USE_SIRIUS ON)
   set(CP2K_USE_LIBXSMM ON)
   set(CP2K_USE_VORI ON)
@@ -213,6 +210,7 @@ if(${cp2k_build_options_up} STREQUAL "SERIAL")
   set(CP2K_USE_FFTW3 ON)
   set(CP2K_USE_MPI OFF)
   set(CP2K_USE_SIRIUS ON)
+  set(CP2K_USE_SIRIUS ON)
   set(CP2K_USE_LIBXSMM ON)
   set(CP2K_USE_VORI ON)
   set(CP2K_USE_COSMA ON)
@@ -231,6 +229,7 @@ endif()
 if(${cp2k_build_options_up} STREQUAL "DEFAULT")
   set(CP2K_USE_FFTW3 ON)
   set(CP2K_USE_MPI ON)
+  set(CP2K_USE_SIRIUS ON)
   set(CP2K_USE_COSMA ON)
   set(CP2K_USE_LIBXSMM ON)
   set(CP2K_USE_LIBXC ON)
@@ -250,6 +249,7 @@ set(CP2K_SUPPORTED_CUDA_ARCHITECTURES
     P100
     V100
     A100
+    H100
     A40)
 set(CP2K_SUPPORTED_HIP_ARCHITECTURES
     Mi50
@@ -263,6 +263,7 @@ set(CP2K_SUPPORTED_HIP_ARCHITECTURES
     P100
     V100
     A100
+    H100
     A40)
 
 set(CP2K_WITH_GPU
@@ -276,7 +277,7 @@ set_property(
 
 set(CP2K_USE_ACCEL
     "NONE"
-    CACHE STRING "Set hardware acceleartion support: CUDA, HIP")
+    CACHE STRING "Set hardware acceleration support: CUDA, HIP")
 
 set_property(CACHE CP2K_USE_ACCEL
              PROPERTY STRINGS ${CP2K_SUPPORTED_ACCELERATION_TARGETS})
@@ -371,21 +372,9 @@ if(CP2K_ENABLE_CONSISTENCY_CHECKS)
   return()
 endif()
 
-# for the time being I change the bin directory to point to
-# ../exe/build-cmake-{cuda,hip,cpu} when we want to run the regtests afterwards.
-# This solution does not require modifying the regtests scripts at all and cmake
-# does not mind this change when we want to install cp2k with a command like
-# `make install`
-if(CP2K_ENABLE_REGTESTS)
-  set(CMAKE_RUNTIME_OUTPUT_DIRECTORY
-      "${cp2k_SOURCE_DIR}/exe/${__cp2k_cmake_name}"
-      CACHE PATH "Single output directory for building all executables.")
-else()
-  set(CMAKE_RUNTIME_OUTPUT_DIRECTORY
-      ${cp2k_BINARY_DIR}/bin
-      CACHE PATH "Single output directory for building all executables.")
-
-endif()
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY
+    ${cp2k_BINARY_DIR}/bin
+    CACHE PATH "Single output directory for building all executables.")
 
 # Python
 #
@@ -513,6 +502,7 @@ if((CP2K_USE_ACCEL MATCHES CUDA) OR (CP2K_USE_ACCEL MATCHES HIP))
   set(CP2K_GPU_ARCH_NUMBER_P100 60)
   set(CP2K_GPU_ARCH_NUMBER_V100 70)
   set(CP2K_GPU_ARCH_NUMBER_A100 80)
+  set(CP2K_GPU_ARCH_NUMBER_H100 90)
   set(CP2K_GPU_ARCH_NUMBER_A40 86)
   set(CP2K_GPU_ARCH_NUMBER_Mi50 gfx906)
   set(CP2K_GPU_ARCH_NUMBER_Mi100 gfx908)
@@ -711,8 +701,12 @@ if(CP2K_USE_SPLA)
     )
   endif()
 endif()
-# SIRIUS
 
+if(CP2K_USE_DFTD4)
+  find_package(dftd4 REQUIRED)
+endif()
+
+# SIRIUS
 if(CP2K_USE_SIRIUS)
   find_package(sirius REQUIRED)
 endif()
@@ -857,6 +851,12 @@ if(CP2K_USE_FFTW3)
           "    - libraries : ${CP2K_FFTW3_LINK_LIBRARIES}\n\n")
 endif()
 
+if(CP2K_USE_PLUMED)
+  message("  - PLUMED\n"
+          "    - include directories : ${CP2K_PLUMED_INCLUDE_DIRS}\n"
+          "    - libraries : ${CP2K_PLUMED_LINK_LIBRARIES}\n\n")
+endif()
+
 if(CP2K_USE_LIBXSMM)
   message(
     "  - libxsmm\n"
@@ -868,6 +868,13 @@ endif()
 if(CP2K_USE_SPLA)
   message(" - SPLA\n" "   - include directories : ${SPLA_INCLUDE_DIRS}\n"
           "   - lbraries : ${SPLA_LIBRARIES}\n\n")
+endif()
+
+if(CP2K_USE_DFTD4)
+  message(
+    " - DFTD4 :\n" "   - include modules     :  ${DFTD4_DFTD4};${DFTD4_MCTC}\n"
+    "   - include directories :  ${DFTD4_INCLUDE_DIR}\n"
+    "   - libraries           :  ${DFTD4_LIBDIR}\n\n")
 endif()
 
 if(CP2K_USE_SIRIUS)
@@ -938,6 +945,10 @@ if(NOT CP2K_USE_MPI)
   message("   - MPI")
 endif()
 
+if(NOT CP2K_USE_DFTD4)
+  message("   - DFTD4")
+endif()
+
 if(NOT CP2K_USE_SIRIUS)
   message("   - SIRIUS")
 endif()
@@ -966,7 +977,7 @@ if(NOT CP2K_USE_DLAF)
   message("   - DLAF")
 endif()
 
-if(NOT CP2K_USE_PLUMMED)
+if(NOT CP2K_USE_PLUMED)
   message("   - PLUMED")
 endif()
 
@@ -1006,11 +1017,9 @@ if(NOT CP2K_USE_LIBTORCH)
   message("   - libtorch")
 endif()
 
-if(CP2K_ENABLE_REGTESTS OR cp2k_TESTS)
-  message("\n\n" "To run the regtests you need to run the following commands\n"
-          "\n\n cd ..\n" " export CP2K_DATA_DIR=${CMAKE_SOURCE_DIR}/data/\n"
-          " ./tests/do_regtest.py ${__cp2k_cmake_name} ${__cp2k_ext}\n\n")
-endif()
+message("\n\n" "To run the regtests you need to run the following commands\n"
+        "\n\n cd ..\n" " export CP2K_DATA_DIR=${CMAKE_SOURCE_DIR}/data/\n"
+        " ./tests/do_regtest.py ${cp2k_BINARY_DIR}/bin ${__cp2k_ext}\n\n")
 
 # files needed for cmake
 

@@ -54,14 +54,6 @@ CONTAINS
          " ***** **    ** ** **   PROGRAM PROCESS ID ", r_pid
       WRITE (UNIT=iw, FMT="(A,T44,A37)") &
          "  **** **  *******  **  PROGRAM STARTED IN ", ADJUSTR(cwd(1:37))
-      WRITE (UNIT=iw, FMT="(A)") &
-         ""
-      WRITE (UNIT=iw, FMT="(A)") &
-         "ANDROID | Version for Android (aarch64, pie) compiled on June 15, 2024"
-      WRITE (UNIT=iw, FMT="(A)") &
-         "ANDROID | by A. Liska & V. Ruzickova"
-      WRITE (UNIT=iw, FMT="(A)") &
-         "" 
       DO l = 38, LEN_TRIM(cwd), 37
          WRITE (UNIT=iw, FMT="(T44,A)") cwd(l:MIN(LEN_TRIM(cwd), l + 36))
       END DO

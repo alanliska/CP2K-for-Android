@@ -22,13 +22,14 @@ MODULE scf_control_types
                                               cp_print_key_unit_nr
    USE cp_units,                        ONLY: cp_unit_from_cp2k
    USE input_constants,                 ONLY: &
-        atomic_guess, diag_ot, direct_p_mix, general_roks, high_spin_roks, ot_algo_taylor_or_diag, &
-        outer_scf_basis_center_opt, outer_scf_cdft_constraint, outer_scf_ddapc_constraint, &
-        outer_scf_none, outer_scf_optimizer_bisect, outer_scf_optimizer_broyden, &
-        outer_scf_optimizer_diis, outer_scf_optimizer_newton, outer_scf_optimizer_newton_ls, &
-        outer_scf_optimizer_none, outer_scf_optimizer_sd, outer_scf_optimizer_secant, &
-        outer_scf_s2_constraint, smear_energy_window, smear_fermi_dirac, smear_list
-   USE input_cp2k_dft,                  ONLY: create_scf_section
+        atomic_guess, diag_ot, direct_p_mix, general_roks, high_spin_roks, no_guess, no_mix, &
+        ot_algo_taylor_or_diag, outer_scf_basis_center_opt, outer_scf_cdft_constraint, &
+        outer_scf_ddapc_constraint, outer_scf_none, outer_scf_optimizer_bisect, &
+        outer_scf_optimizer_broyden, outer_scf_optimizer_diis, outer_scf_optimizer_newton, &
+        outer_scf_optimizer_newton_ls, outer_scf_optimizer_none, outer_scf_optimizer_sd, &
+        outer_scf_optimizer_secant, outer_scf_s2_constraint, smear_energy_window, &
+        smear_fermi_dirac, smear_list
+   USE input_cp2k_scf,                  ONLY: create_scf_section
    USE input_enumeration_types,         ONLY: enum_i2c,&
                                               enumeration_type
    USE input_keyword_types,             ONLY: keyword_get,&
@@ -88,56 +89,58 @@ MODULE scf_control_types
 !> \author Fawzi Mohamed
 ! **************************************************************************************************
    TYPE smear_type
-      LOGICAL       :: do_smear
-      LOGICAL       :: common_mu
-      INTEGER       :: method
-      REAL(KIND=dp) :: electronic_temperature, &
-                       fixed_mag_mom, &
-                       eps_fermi_dirac, &
-                       window_size
-      REAL(KIND=dp), DIMENSION(:), POINTER :: list
+      LOGICAL                               :: do_smear = .FALSE.
+      LOGICAL                               :: common_mu = .FALSE.
+      INTEGER                               :: method = -1
+      REAL(KIND=dp)                         :: electronic_temperature = -1.0_dp, &
+                                               fixed_mag_mom = -1.0_dp, &
+                                               eps_fermi_dirac = -1.0_dp, &
+                                               window_size = -1.0_dp
+      REAL(KIND=dp), DIMENSION(:), POINTER  :: list => NULL()
    END TYPE smear_type
 
    TYPE diagonalization_type
-      INTEGER       :: method
-      REAL(KIND=dp) :: eps_jacobi
-      REAL(KIND=dp) :: jacobi_threshold
-      INTEGER       :: max_iter, nkrylov, nblock_krylov
+      INTEGER                               :: method = -1
+      REAL(KIND=dp)                         :: eps_jacobi = -1.0_dp
+      REAL(KIND=dp)                         :: jacobi_threshold = -1.0_dp
+      INTEGER                               :: max_iter = -1, nkrylov = -1, nblock_krylov = -1
       ! Maximum Overlap Method
-      LOGICAL       :: mom, mom_didguess
-      INTEGER       :: mom_proj_formula
+      LOGICAL                               :: mom = .FALSE., mom_didguess = .FALSE.
+      INTEGER                               :: mom_proj_formula = -1
       ! indices of de-occupied and newly occupied alpha / beta molecular orbitals
-      INTEGER, DIMENSION(:), POINTER :: mom_deoccA, mom_deoccB, mom_occA, mom_occB
+      INTEGER, DIMENSION(:), POINTER        :: mom_deoccA => NULL(), mom_deoccB => NULL(), &
+                                               mom_occA => NULL(), mom_occB => NULL()
       ! determines on SCF which iteration MOM will be switched on;
       ! since MOs from the previous iteration should be available, it might be at least
       !  1 when wave-function has been read from restart file, or
       !  2 when the atomic guess method has been used
-      INTEGER       :: mom_start
-      INTEGER       :: mom_type
-      REAL(KIND=dp) :: eps_iter
-      REAL(KIND=dp) :: eps_adapt
-      TYPE(qs_ot_settings_type) :: ot_settings
+      INTEGER                               :: mom_start = -1
+      INTEGER                               :: mom_type = -1
+      REAL(KIND=dp)                         :: eps_iter = -1.0_dp
+      REAL(KIND=dp)                         :: eps_adapt = -1.0_dp
+      TYPE(qs_ot_settings_type)             :: ot_settings = qs_ot_settings_type()
    END TYPE diagonalization_type
 
    TYPE scf_control_type
-      TYPE(outer_scf_control_type)          :: outer_scf
-      TYPE(smear_type), POINTER             :: smear
-      TYPE(diagonalization_type)            :: diagonalization
-      INTEGER                               :: density_guess, mixing_method
-      REAL(KIND=dp)                         :: eps_eigval, eps_scf, eps_scf_hist, &
-                                               level_shift, &
-                                               eps_lumos, eps_diis
-      INTEGER                               :: max_iter_lumos, max_diis, nmixing
-      INTEGER                               :: max_scf, max_scf_hist, &
-                                               maxl, nkind
-      LOGICAL                               :: do_diag_sub, &
-                                               use_cholesky, use_ot, use_diag, do_outer_scf_reortho, &
-                                               ignore_convergence_failure
-      LOGICAL                               :: non_selfconsistent
-      INTEGER, DIMENSION(2)                 :: added_mos
-      INTEGER                               :: roks_scheme
-      REAL(KIND=dp)                         :: roks_f
-      REAL(KIND=dp), DIMENSION(0:2, 0:2, 1:2) :: roks_parameter
+      TYPE(outer_scf_control_type)          :: outer_scf = outer_scf_control_type()
+      TYPE(smear_type), POINTER             :: smear => NULL()
+      TYPE(diagonalization_type)            :: diagonalization = diagonalization_type()
+      INTEGER                               :: density_guess = -1, mixing_method = -1
+      REAL(KIND=dp)                         :: eps_eigval = -1.0_dp, eps_scf = -1.0_dp, eps_scf_hist = -1.0_dp, &
+                                               level_shift = -1.0_dp, &
+                                               eps_lumos = -1.0_dp, eps_diis = -1.0_dp
+      INTEGER                               :: max_iter_lumos = -1, max_diis = -1, nmixing = -1
+      INTEGER                               :: max_scf = -1, max_scf_hist = -1, &
+                                               maxl = -1, nkind = -1
+      LOGICAL                               :: do_diag_sub = .FALSE., &
+                                               use_cholesky = .FALSE., use_ot = .FALSE., &
+                                               use_diag = .FALSE., do_outer_scf_reortho = .FALSE., &
+                                               ignore_convergence_failure = .FALSE.
+      LOGICAL                               :: non_selfconsistent = .FALSE.
+      INTEGER, DIMENSION(2)                 :: added_mos = -1
+      INTEGER                               :: roks_scheme = -1
+      REAL(KIND=dp)                         :: roks_f = -1.0_dp
+      REAL(KIND=dp), DIMENSION(0:2, 0:2, 1:2) :: roks_parameter = -1.0_dp
    END TYPE scf_control_type
 
 CONTAINS
@@ -152,7 +155,7 @@ CONTAINS
 ! **************************************************************************************************
    SUBROUTINE scf_c_create(scf_control)
 
-      TYPE(scf_control_type), INTENT(OUT)                :: scf_control
+      TYPE(scf_control_type), INTENT(INOUT)              :: scf_control
 
       CHARACTER(LEN=*), PARAMETER                        :: routineN = 'scf_c_create'
 
@@ -162,7 +165,11 @@ CONTAINS
 
       ! Load the default values
 
-      scf_control%density_guess = atomic_guess
+      IF (scf_control%non_selfconsistent) THEN
+         scf_control%density_guess = no_guess
+      ELSE
+         scf_control%density_guess = atomic_guess
+      END IF
       scf_control%eps_eigval = 1.0E-5_dp
       scf_control%eps_scf = 1.0E-5_dp
       scf_control%eps_scf_hist = 0.0_dp
@@ -178,7 +185,6 @@ CONTAINS
       scf_control%do_diag_sub = .FALSE.
       scf_control%use_ot = .FALSE.
       scf_control%ignore_convergence_failure = .FALSE.
-      scf_control%non_selfconsistent = .FALSE.
       scf_control%do_outer_scf_reortho = .TRUE.
       scf_control%max_diis = 4
       scf_control%eps_diis = 0.1_dp
@@ -186,7 +192,11 @@ CONTAINS
       scf_control%max_scf_hist = 0
 
       !Mixing
-      scf_control%mixing_method = direct_p_mix
+      IF (scf_control%non_selfconsistent) THEN
+         scf_control%mixing_method = no_mix
+      ELSE
+         scf_control%mixing_method = direct_p_mix
+      END IF
 
       ! Diagonalization
       scf_control%diagonalization%method = 0
