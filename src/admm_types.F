@@ -1,6 +1,6 @@
 !--------------------------------------------------------------------------------------------------!
 !   CP2K: A general program to perform molecular dynamics simulations                              !
-!   Copyright 2000-2024 CP2K developers group <https://cp2k.org>                                   !
+!   Copyright 2000-2025 CP2K developers group <https://cp2k.org>                                   !
 !                                                                                                  !
 !   SPDX-License-Identifier: GPL-2.0-or-later                                                      !
 !--------------------------------------------------------------------------------------------------!
@@ -352,7 +352,7 @@ CONTAINS
          CALL cp_fm_create(admm_env%lambda_inv2(ispin), fm_struct_nmo_nmo, name="lambda_inv2")
          CALL cp_fm_create(admm_env%C_hat(ispin), fm_struct_aux_nmo, name="C_hat")
          CALL cp_fm_create(admm_env%P_tilde(ispin), fm_struct_aux_aux, name="P_tilde")
-         CALL cp_fm_create(admm_env%ks_to_be_merged(ispin), fm_struct_orb_orb, name="KS_to_be_merged ")
+         CALL cp_fm_create(admm_env%ks_to_be_merged(ispin), fm_struct_orb_orb, name="KS_to_be_merged")
 
          ALLOCATE (admm_env%eigvals_lambda(ispin)%eigvals)
          ALLOCATE (admm_env%eigvals_P_to_be_purified(ispin)%eigvals)

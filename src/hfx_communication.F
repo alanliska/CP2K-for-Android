@@ -1,6 +1,6 @@
 !--------------------------------------------------------------------------------------------------!
 !   CP2K: A general program to perform molecular dynamics simulations                              !
-!   Copyright 2000-2024 CP2K developers group <https://cp2k.org>                                   !
+!   Copyright 2000-2025 CP2K developers group <https://cp2k.org>                                   !
 !                                                                                                  !
 !   SPDX-License-Identifier: GPL-2.0-or-later                                                      !
 !--------------------------------------------------------------------------------------------------!
@@ -103,7 +103,7 @@ CONTAINS
       CALL dbcsr_iterator_start(iter, rho, shared=.FALSE.)
       DO WHILE (dbcsr_iterator_blocks_left(iter))
          CALL dbcsr_iterator_next_block(iter, iatom, jatom, sparse_block, blk)
-         ! the resulting vector will eb only the upper triangle.
+         ! the resulting vector will be only the upper triangle.
          ! in case of antisymmetry take care to change signs if a lower block gets copied
          symmfac = 1.0_dp
          IF (antisymmetric .AND. iatom > jatom) symmfac = -1.0_dp

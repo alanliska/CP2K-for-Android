@@ -1,6 +1,6 @@
 !--------------------------------------------------------------------------------------------------!
 !   CP2K: A general program to perform molecular dynamics simulations                              !
-!   Copyright 2000-2024 CP2K developers group <https://cp2k.org>                                   !
+!   Copyright 2000-2025 CP2K developers group <https://cp2k.org>                                   !
 !                                                                                                  !
 !   SPDX-License-Identifier: GPL-2.0-or-later                                                      !
 !--------------------------------------------------------------------------------------------------!
@@ -207,6 +207,8 @@ CONTAINS
 
       CALL centers_spreads_berry(qs_loc_env, zij_fm_set, nmoloc, cell, weights, &
                                  ispin, print_loc_section, only_initial_out=.TRUE.)
+
+      sweeps = 0
 
       SELECT CASE (method)
       CASE (do_loc_jacobi)

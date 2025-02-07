@@ -1,6 +1,6 @@
 /*----------------------------------------------------------------------------*/
 /*  CP2K: A general program to perform molecular dynamics simulations         */
-/*  Copyright 2000-2024 CP2K developers group <https://cp2k.org>              */
+/*  Copyright 2000-2025 CP2K developers group <https://cp2k.org>              */
 /*                                                                            */
 /*  SPDX-License-Identifier: BSD-3-Clause                                     */
 /*----------------------------------------------------------------------------*/
@@ -38,12 +38,14 @@ void dbm_multiply_gpu_start(const int max_batch_size, const int nshards,
 
   // Allocate and upload shards of result matrix C.
   ctx->shards_c_dev = malloc(nshards * sizeof(dbm_shard_gpu_t));
+  assert(ctx->shards_c_dev != NULL);
   for (int i = 0; i < nshards; i++) {
     const dbm_shard_t *shard_c_host = &ctx->shards_c_host[i];
     dbm_shard_gpu_t *shard_c_dev = &ctx->shards_c_dev[i];
     offloadStreamCreate(&shard_c_dev->stream);
     shard_c_dev->data_size = shard_c_host->data_size;
-    shard_c_dev->data_allocated = shard_c_host->data_allocated;
+    // only allocate data_size on device rather than data_allocated
+    shard_c_dev->data_allocated = shard_c_host->data_size;
     shard_c_dev->data =
         dbm_mempool_device_malloc(shard_c_dev->data_allocated * sizeof(double));
     offloadMemcpyAsyncHtoD(shard_c_dev->data, shard_c_host->data,

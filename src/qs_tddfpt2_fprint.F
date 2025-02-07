@@ -1,6 +1,6 @@
 !--------------------------------------------------------------------------------------------------!
 !   CP2K: A general program to perform molecular dynamics simulations                              !
-!   Copyright 2000-2024 CP2K developers group <https://cp2k.org>                                   !
+!   Copyright 2000-2025 CP2K developers group <https://cp2k.org>                                   !
 !                                                                                                  !
 !   SPDX-License-Identifier: GPL-2.0-or-later                                                      !
 !--------------------------------------------------------------------------------------------------!
@@ -54,7 +54,7 @@ MODULE qs_tddfpt2_fprint
    USE qs_ks_methods,                   ONLY: qs_ks_build_kohn_sham_matrix
    USE qs_ks_types,                     ONLY: qs_ks_env_type,&
                                               set_ks_env
-   USE qs_matrix_w,                     ONLY: qs_energies_compute_matrix_w
+   USE qs_matrix_w,                     ONLY: compute_matrix_w
    USE qs_p_env_types,                  ONLY: p_env_release,&
                                               qs_p_env_type
    USE qs_scf,                          ONLY: scf
@@ -66,8 +66,8 @@ MODULE qs_tddfpt2_fprint
                                               response_force,&
                                               response_force_xtb
    USE ri_environment_methods,          ONLY: build_ri_matrices
-   USE xtb_matrices,                    ONLY: build_xtb_ks_matrix,&
-                                              build_xtb_matrices
+   USE xtb_ks_matrix,                   ONLY: build_xtb_ks_matrix
+   USE xtb_matrices,                    ONLY: build_xtb_matrices
 #include "./base/base_uses.f90"
 
    IMPLICIT NONE
@@ -323,7 +323,7 @@ CONTAINS
       CALL qs_env_rebuild_pw_env(qs_env)
       CALL qs_energies_init(qs_env, .TRUE.)
       CALL scf(qs_env)
-      CALL qs_energies_compute_matrix_w(qs_env, .TRUE.)
+      CALL compute_matrix_w(qs_env, .TRUE.)
 
       NULLIFY (para_env)
       CALL get_qs_env(qs_env, para_env=para_env)
@@ -332,8 +332,7 @@ CONTAINS
       ELSEIF (dft_control%qs_control%dftb) THEN
          CPABORT("TDDFPT| DFTB not available")
       ELSEIF (dft_control%qs_control%xtb) THEN
-         CALL build_xtb_matrices(qs_env=qs_env, para_env=para_env, &
-                                 calculate_forces=.TRUE.)
+         CALL build_xtb_matrices(qs_env=qs_env, calculate_forces=.TRUE.)
          CALL build_xtb_ks_matrix(qs_env, calculate_forces=.TRUE., just_energy=.FALSE.)
       ELSE
          CALL build_core_hamiltonian_matrix(qs_env=qs_env, calculate_forces=.TRUE.)

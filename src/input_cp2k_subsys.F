@@ -1,6 +1,6 @@
 !--------------------------------------------------------------------------------------------------!
 !   CP2K: A general program to perform molecular dynamics simulations                              !
-!   Copyright 2000-2024 CP2K developers group <https://cp2k.org>                                   !
+!   Copyright 2000-2025 CP2K developers group <https://cp2k.org>                                   !
 !                                                                                                  !
 !   SPDX-License-Identifier: GPL-2.0-or-later                                                      !
 !--------------------------------------------------------------------------------------------------!
@@ -1330,6 +1330,11 @@ CONTAINS
                           "Setting PAO_BASIS_SIZE to the size of the primary basis or to a value "// &
                           "below one will disables the PAO method for the given atomic kind. "// &
                           "By default PAO is disbabled.", default_i_val=0)
+      CALL section_add_keyword(section, keyword)
+      CALL keyword_release(keyword)
+
+      CALL keyword_create(keyword, __LOCATION__, name="PAO_MODEL_FILE", type_of_var=lchar_t, &
+                          description="The filename of the PyTorch model for predicting PAO basis sets.")
       CALL section_add_keyword(section, keyword)
       CALL keyword_release(keyword)
 

@@ -1,6 +1,6 @@
 !--------------------------------------------------------------------------------------------------!
 !   CP2K: A general program to perform molecular dynamics simulations                              !
-!   Copyright 2000-2024 CP2K developers group <https://cp2k.org>                                   !
+!   Copyright 2000-2025 CP2K developers group <https://cp2k.org>                                   !
 !                                                                                                  !
 !   SPDX-License-Identifier: GPL-2.0-or-later                                                      !
 !--------------------------------------------------------------------------------------------------!
@@ -482,7 +482,7 @@ CONTAINS
          IF (output_unit > 0) THEN
             WRITE (UNIT=output_unit, FMT="(/,/,T2,A)") " Eigenstates are derived "// &
                "from the MOs optimized by OT. Follows localization of the core states"// &
-               " to identify the excited orbital. "
+               " to identify the excited orbital."
          END IF
 
          CALL get_xas_env(xas_env=xas_env, &

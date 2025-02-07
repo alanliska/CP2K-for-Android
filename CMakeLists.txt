@@ -1,6 +1,6 @@
 #!-------------------------------------------------------------------------------------------------!
 #!   CP2K: A general program to perform molecular dynamics simulations                             !
-#!   Copyright 2000-2024 CP2K developers group <https://cp2k.org>                                  !
+#!   Copyright 2000-2025 CP2K developers group <https://cp2k.org>                                  !
 #!                                                                                                 !
 #!   SPDX-License-Identifier: GPL-2.0-or-later                                                     !
 #!-------------------------------------------------------------------------------------------------!
@@ -37,7 +37,7 @@ project(
   cp2k
   DESCRIPTION "CP2K"
   HOMEPAGE_URL "https://www.cp2k.org"
-  VERSION "2024.3"
+  VERSION "2025.1"
   LANGUAGES Fortran C CXX)
 
 list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake/modules")
@@ -99,31 +99,29 @@ option(CP2K_ENABLE_CONSISTENCY_CHECKS
 option(CP2K_DEBUG_MODE "Enable several additional options for debugging cp2k."
        OFF)
 option(CP2K_USE_DFTD4 "Enable dispersion coorections DFTD4" OFF)
+option(CP2K_USE_DEEPMD "Enable DeePMD" OFF)
 option(CP2K_USE_SIRIUS "Enable plane wave dft calculations with sirius" OFF)
 option(CP2K_USE_FFTW3 "Use fftw3 for the calculating fast fourier transforms"
        ON)
 option(CP2K_USE_MPI "Enable MPI support" ON)
 option(CP2K_USE_ELPA "Enable elpa support" OFF)
-option(CP2K_USE_PEXSI "Enable pexsi support" OFF)
-option(CP2K_USE_SUPERLU "Enable superlu support" OFF)
 option(CP2K_USE_COSMA "COSMA is a drop in replacement of scalapack dgemm" OFF)
 option(CP2K_USE_LIBINT2 "Enable libint2 support" OFF)
 option(CP2K_USE_PLUMED "Enable plumed2 support" OFF)
 option(CP2K_USE_VORI "Enable libvori support" OFF)
-option(CP2K_USE_PEXSI "Enable pexsi support" OFF)
-option(CP2K_USE_QUIP "Enable quip support" OFF)
 option(CP2K_USE_SPGLIB "Enable spglib support" OFF)
 option(CP2K_USE_LIBXC "Enable libxc support" OFF)
 option(CP2K_USE_LIBTORCH "Enable libtorch support" OFF)
 option(CP2K_USE_STATIC_BLAS "Link against static version of BLAS/LAPACK" OFF)
 option(CP2K_USE_SPLA
        "Use SPLA offloading gemm feature to the GPU if it is beneficial. " OFF)
-option(CP2K_USE_METIS "enable metis library support" OFF)
 option(
   CP2K_USE_DLAF
   "Use DLA-Future for Cholesky decompositions and the solution of eigenvalue problems"
   OFF)
+option(CP2K_USE_HDF5 "Enable HDF5 support" OFF)
 option(CP2K_USE_LIBXSMM "Use libxsmm for small gemms" OFF)
+option(CP2K_USE_LIBSMEAGOL "Enable libsmeagol support" OFF)
 # option(CP2K_USE_LIBGRPP "Use libgrpp" OFF)
 option(BUILD_SHARED_LIBS "Build cp2k shared library" ON)
 option(
@@ -199,17 +197,13 @@ if(${cp2k_build_options_up} STREQUAL "FULL")
   set(CP2K_USE_ELPA ON)
   set(CP2K_USE_SPGLIB ON)
   set(CP2K_USE_LIBTORCH ON)
-  set(CP2K_USE_METIS ON)
-  set(CP2K_USE_QUIP ON)
-  set(CP2K_USE_PEXSI ON)
-  set(CP2K_USE_SUPERLU ON)
+  set(CP2K_USE_HDF5 ON)
   # set(CP@K_USE_LIBGRPP ON)
 endif()
 
 if(${cp2k_build_options_up} STREQUAL "SERIAL")
   set(CP2K_USE_FFTW3 ON)
   set(CP2K_USE_MPI OFF)
-  set(CP2K_USE_SIRIUS ON)
   set(CP2K_USE_SIRIUS ON)
   set(CP2K_USE_LIBXSMM ON)
   set(CP2K_USE_VORI ON)
@@ -220,10 +214,6 @@ if(${cp2k_build_options_up} STREQUAL "SERIAL")
   set(CP2K_USE_ELPA ON)
   set(CP2K_USE_SPGLIB ON)
   set(CP2K_USE_LIBTORCH ON)
-  set(CP2K_USE_METIS ON)
-  set(CP2K_USE_QUIP ON)
-  set(CP2K_USE_PEXSI ON)
-  set(CP2K_USE_SUPERLU ON)
 endif()
 
 if(${cp2k_build_options_up} STREQUAL "DEFAULT")
@@ -332,26 +322,11 @@ cmake_dependent_option(DBCSR_USE_OPENMP "Enable openmp support in DBCSR" ON
 # ##############################################################################
 
 set(__cp2k_ext "")
-set(__cp2k_cmake_name "")
 
 if(CP2K_USE_MPI)
   set(__cp2k_ext "psmp")
 else()
   set(__cp2k_ext "ssmp")
-endif()
-
-set(__cp2k_cmake_name "local")
-
-if(CP2K_USE_ACCEL MATCHES "CUDA")
-  set(__cp2k_cmake_name "local_cuda")
-endif()
-
-if(CP2K_USE_ACCEL MATCHES "HIP")
-  set(__cp2k_cmake_name "local_hip")
-endif()
-
-if(CP2K_CMAKE_SUFFIX)
-  string(APPEND __cp2k_cmake_name "${CP2K_CMAKE_SUFFIX}")
 endif()
 
 # we can run the src consistency checks without actually searching for any
@@ -451,25 +426,13 @@ else()
      OR CP2K_USE_COSMA
      OR CP2K_USE_SPLA
      OR CP2K_USE_ELPA
-     OR CP2K_USE_METIS
-     OR CP2K_USE_PLUMED
-     OR CP2K_USE_PEXSI
-     OR CP2K_USE_QUIP)
+     OR CP2K_USE_PLUMED)
     message(
       WARNING
-        "SIRIUS, COSMA, SPLA, ELPA, METIS, PLUMED, PEXSI and QUIP require MPI support.\n"
+        "SIRIUS, COSMA, SPLA, and ELPA require MPI support.\n"
         "Either set -DCP2K_USE_MPI to ON or turn the following dependencies off\n\n"
         "List of dependencies with mpi support\n")
-    foreach(
-      __libs
-      sirius
-      COSMA
-      SPLA
-      ELPA
-      METIS
-      PLUMED
-      PEXSI
-      QUIP)
+    foreach(__libs sirius COSMA SPLA ELPA PLUMED)
       if(CP2K_USE_${__libs})
         message(WARNING " - ${__libs}")
       endif()
@@ -508,13 +471,15 @@ if((CP2K_USE_ACCEL MATCHES CUDA) OR (CP2K_USE_ACCEL MATCHES HIP))
   set(CP2K_GPU_ARCH_NUMBER_Mi100 gfx908)
   set(CP2K_GPU_ARCH_NUMBER_Mi200 gfx90a)
   set(CP2K_GPU_ARCH_NUMBER_Mi250 gfx90a)
-  set(CP2K_GPU_ARCH_NUMBER_Mi300 gfx1103)
+  set(CP2K_GPU_ARCH_NUMBER_Mi300 gfx942)
 endif()
 
 set(CP2K_USE_HIP OFF)
 set(CP2K_USE_CUDA OFF)
 
+option(CP2K_USE_PW_GPU "Enable GPU in CUDA" OFF)
 if(CP2K_USE_ACCEL MATCHES "CUDA")
+  option(CP2K_WITH_CUDA_PROFILING "Enable CUDA profiling" OFF)
   # P100 is the default target.
   set(CMAKE_CUDA_ARCHITECTURES 60)
 
@@ -539,10 +504,10 @@ if(CP2K_USE_ACCEL MATCHES "CUDA")
   endif()
 
   set(CMAKE_CUDA_ARCHITECTURES ${CP2K_GPU_ARCH_NUMBER_${CP2K_WITH_GPU}})
-
   message(STATUS "GPU target architecture: ${CP2K_WITH_GPU}\n"
                  "GPU architecture number: ${CMAKE_CUDA_ARCHITECTURES}\n"
                  "GPU profiling enabled: ${CP2K_WITH_CUDA_PROFILING}\n")
+  set(CP2K_ACC_ARCH_NUMBER ${CMAKE_CUDA_ARCHITECTURES})
 
   if(WITH_CUDA_PROFILING)
     find_library(
@@ -554,18 +519,23 @@ if(CP2K_USE_ACCEL MATCHES "CUDA")
   endif()
 
   set(CP2K_USE_CUDA ON)
+  set(CP2K_USE_PW_GPU ON)
 
   if(CP2K_USE_CUSOLVER_MP)
     find_package(CuSolverMP REQUIRED)
   endif()
   message(STATUS ``"-- CUDA compiler and libraries found")
+
 elseif(CP2K_USE_ACCEL MATCHES "HIP")
   enable_language(HIP)
   # Find hip
+
   find_package(hipfft REQUIRED IMPORTED CONFIG)
   find_package(hipblas REQUIRED IMPORTED CONFIG)
 
-  set(CMAKE_HIP_ARCHITECTURES gfx801 gfx900 gfx90a)
+  if(CMAKE_HIP_PLATFORM MATCHES "nvidia")
+    find_package(CUDAToolkit)
+  endif()
   if(NOT CMAKE_BUILD_TYPE)
     set(HIP_RELEASE_OPTIONS "-O3 --std=c++11")
   elseif(${CMAKE_BUILD_TYPE} STREQUAL "RelWithDebInfo")
@@ -577,10 +547,12 @@ elseif(CP2K_USE_ACCEL MATCHES "HIP")
   endif()
 
   set(CMAKE_HIP_ARCHITECTURES "${CP2K_GPU_ARCH_NUMBER_${CP2K_WITH_GPU}}")
+  set(CP2K_ACC_ARCH_NUMBER ${CP2K_GPU_ARCH_NUMBER_${CP2K_WITH_GPU}})
   set(CP2K_USE_HIP ON)
+  set(CP2K_USE_PW_GPU ON)
 
   # use hardware atomic operations on Mi250X.
-  if(CMAKE_HIP_ARCGITECTURES MATCHES "gfx90a|gfx1103")
+  if(CMAKE_HIP_ARCGITECTURES MATCHES "gfx90a|gfx942")
     set(HIP_RELEASE_OPTIONS "-munsafe-fp-atomics")
   endif()
 
@@ -590,8 +562,8 @@ elseif(CP2K_USE_ACCEL MATCHES "HIP")
       set(CMAKE_HIP_ARCHITECTURES "gfx90a:xnack+")
     endif()
 
-    if(CMAKE_HIP_ARCHITECTURES MATCHES "gfx1103")
-      set(CMAKE_HIP_ARCHITECTURES "gfx1103:xnack+")
+    if(CMAKE_HIP_ARCHITECTURES MATCHES "gfx942")
+      set(CMAKE_HIP_ARCHITECTURES "gfx942:xnack+")
     endif()
   endif()
 endif()
@@ -607,7 +579,11 @@ if(CP2K_USE_ELPA)
 endif()
 
 if(CP2K_USE_LIBXC)
-  find_package(LibXC 6 REQUIRED EXACT)
+  find_package(Libxc 7 REQUIRED CONFIG)
+endif()
+
+if(CP2K_USE_HDF5)
+  find_package(HDF5 REQUIRED COMPONENTS C Fortran)
 endif()
 
 # uncomment this when libgrpp cmake support is complete
@@ -617,8 +593,14 @@ endif()
 if(CP2K_USE_COSMA)
   find_package(cosma REQUIRED)
 
-  # check that cosma::cosma_pxgemm and cosma::cosma_prefixed_pxgemm exist
-  if(NOT TARGET cosma::cosma_pxgemm OR NOT TARGET cosma::cosma_prefixed_pxgemm)
+  get_target_property(CP2K_COSMA_INCLUDE_DIRS cosma::cosma
+                      INTERFACE_INCLUDE_DIRECTORIES)
+  get_target_property(CP2K_COSMA_LINK_LIBRARIES cosma::cosma
+                      INTERFACE_LINK_LIBRARIES)
+
+  # check that cosma::cosma_pxgemm_cpp and cosma::cosma_prefixed_pxgemm exist
+  if(NOT TARGET cosma::cosma_pxgemm_cpp OR NOT TARGET
+                                           cosma::cosma_prefixed_pxgemm)
     message(
       FATAL_ERROR
         " COSMA needs to be build with scalapack offloading support. COSTA_SCALAPACK and COSMA_SCALAPACK should probably be set properly"
@@ -632,6 +614,12 @@ endif()
 
 if(CP2K_USE_DLAF)
   find_package(DLAFFortran REQUIRED)
+
+  get_target_property(CP2K_DLAF_INCLUDE_DIRS DLAF::DLAF
+                      INTERFACE_INCLUDE_DIRECTORIES)
+  get_target_property(CP2K_DLAF_LINK_LIBRARIES DLAF::dlaf.prop
+                      INTERFACE_LINK_LIBRARIES)
+  message("${CP2K_DLAF_INCLUDE_DIRS} ${CP2K_DLAF_LINK_LIBRARIES}")
 endif()
 
 # FFTW3
@@ -669,13 +657,7 @@ if(CP2K_USE_FFTW3)
   endif()
 endif()
 
-# QUIP
-if(CP2K_USE_QUIP)
-  find_package(Quip REQUIRED)
-endif()
-
 # libint
-
 if(CP2K_USE_LIBINT2)
   find_package(Libint2 REQUIRED)
 endif()
@@ -683,6 +665,10 @@ endif()
 # spglib
 if(CP2K_USE_SPGLIB)
   find_package(Spglib CONFIG REQUIRED)
+endif()
+
+if(CP2K_USE_LIBSMEAGOL)
+  find_package(libsmeagol REQUIRED)
 endif()
 
 if(CP2K_USE_SPLA)
@@ -704,28 +690,22 @@ endif()
 
 if(CP2K_USE_DFTD4)
   find_package(dftd4 REQUIRED)
+
+  get_target_property(CP2K_DFTD4_LINK_LIBRARIES dftd4::dftd4
+                      INTERFACE_LINK_LIBRARIES)
+  get_target_property(CP2K_DFTD4_LIB_LINK_LIBRARIES dftd4::dftd4-lib
+                      INTERFACE_LINK_LIBRARIES)
+  get_target_property(CP2K_DFTD4_INCLUDE_DIR dftd4::dftd4-lib
+                      INTERFACE_INCLUDE_DIRECTORIES)
+endif()
+
+if(CP2K_USE_DEEPMD)
+  find_package(DeePMD REQUIRED CONFIG)
 endif()
 
 # SIRIUS
 if(CP2K_USE_SIRIUS)
   find_package(sirius REQUIRED)
-endif()
-
-if(CP2K_USE_SUPERLU)
-  find_package(SuperLU REQUIRED)
-endif()
-
-if(CP2K_USE_METIS)
-  find_package(Metis)
-endif()
-
-if(CP2K_USE_PTSCOTCH)
-  find_package(Ptscotch REQUIRED)
-endif()
-
-if(CP2K_USE_PEXSI)
-  # PEXSI 1.2 uses cmake as build system
-  find_package(PEXSI REQUIRED)
 endif()
 
 if(CP2K_USE_PLUMED)
@@ -765,11 +745,6 @@ endif()
 # compiler configuration could have impacted package discovery (above)
 include(CompilerConfiguration)
 include(CheckCompilerSupport)
-
-if(CP2K_BUILD_DBCSR)
-  add_subdirectory(exts/dbcsr/src)
-  add_library(DBCSR::dbcsr ALIAS dbcsr)
-endif()
 
 include(GNUInstallDirs)
 
@@ -818,7 +793,7 @@ if((CP2K_USE_ACCEL MATCHES "CUDA") OR (CP2K_USE_ACCEL MATCHES "HIP"))
   if(CP2K_USE_ACCEL MATCHES "CUDA")
     message(
       "   - CUDA:\n" "     - GPU target architecture : ${CP2K_WITH_GPU}\n"
-      "     - GPU architecture number : ${CP2K_ACC_ARCH_NUMBER}"
+      "     - GPU architecture number : ${CP2K_ACC_ARCH_NUMBER}\n"
       "     - GPU profiling enabled :   ${CP2K_WITH_CUDA_PROFILING}\n\n")
   endif()
 
@@ -829,20 +804,36 @@ if((CP2K_USE_ACCEL MATCHES "CUDA") OR (CP2K_USE_ACCEL MATCHES "HIP"))
 
   message(
     "Note : Enabling hardware acceleration enable acceleration of the grid, pw, and dbm modules by default\n"
-    "    - GRID module : ${CP2K_USE_GRID_GPU}\n"
     "    - PW   module : ${CP2K_USE_PW_GPU}\n"
-    "    - DBM  module : ${CP2K_USE_DBM_GPU}\n\n")
+    "\n")
+endif()
+
+if(CP2K_USE_CUSOLVER_MP)
+  message(
+    "   - CUSolverMP: \n"
+    "     - library: ${CP2K_CUSOLVER_MP_LINK_LIBRARIES} \n"
+    "     - include: ${CP2K_CUSOLVER_MP_INCLUDE_DIRS} \n"
+    "     - CAL library: ${CP2K_CAL_LINK_LIBRARIES} \n"
+    "     - CAL include: ${CP2K_CAL_INCLUDE_DIRS} \n"
+    "     - ucc library: ${CP2K_UCC_LINK_LIBRARIES} \n"
+    "     - ucx library: ${CP2K_UCX_LINK_LIBRARIES} \n"
+    "     - ucc include: ${CP2K_UCC_INCLUDE_DIRS} \n")
 endif()
 
 if(CP2K_USE_LIBXC)
-  message(
-    "  - LIBXC (note to package managers : libxc can be build with cmake as well)"
-    "   - include directories : ${CP2K_LIBXC_INCLUDE_DIRS}\n"
-    "   - libraries : ${CP2K_LIBXC_LINK_LIBRARIES}\n\n")
+  message("  - LibXC\n" "    - Libxc_VERSION:  ${Libxc_VERSION}\n"
+          "    - Libxc_INCLUDE_DIRS : ${Libxc_INCLUDE_DIRS}\n"
+          "    - Libxc_LIBRARIES : ${Libxc_LIBRARIES}\n\n")
 endif()
 
 if(CP2K_USE_LIBTORCH)
   message("  - LIBTORCH\n" "    - libraries : ${CP2K_LIBTORCH_LIBRARIES}\n\n")
+endif()
+
+if(CP2K_USE_HDF5)
+  message("  - HDF5\n" "   - HDF5_VERSION : ${HDF5_VERSION}\n"
+          "   - HDF5_INCLUDE_DIRS : ${HDF5_INCLUDE_DIRS}\n"
+          "   - HDF5_LIBRARIES : ${HDF5_LIBRARIES}\n\n")
 endif()
 
 if(CP2K_USE_FFTW3)
@@ -872,43 +863,30 @@ endif()
 
 if(CP2K_USE_DFTD4)
   message(
-    " - DFTD4 :\n" "   - include modules     :  ${DFTD4_DFTD4};${DFTD4_MCTC}\n"
-    "   - include directories :  ${DFTD4_INCLUDE_DIR}\n"
-    "   - libraries           :  ${DFTD4_LIBDIR}\n\n")
+    " - DFTD4 :\n"
+    "   - include directories :  ${CP2K_DFTD4_INCLUDE_DIR}\n"
+    "   - libraries           :  ${CP2K_DFTD4_LINK_LIBRARIES};${CP2K_DFTD4_LIB_LINK_LIBRARIES}\n\n"
+  )
+endif()
+
+if(CP2K_USE_DEEPMD)
+  message(" - DeePMD\n\n")
+endif()
+
+if(CP2K_USE_LIBSMEAGOL)
+  message(" - LIBSMEAGOL :\n"
+          "   - include directories :  ${CP2K_LIBSMEAGOL_INCLUDE_DIRS}\n"
+          "   - libraries           :  ${CP2K_LIBSMEAGOL_LINK_LIBRARIES}\n\n")
 endif()
 
 if(CP2K_USE_SIRIUS)
-  message(
-    " - SIRIUS :\n"
-    "   - include directories :  ${SIRIUS_INCLUDE_DIRS}\n"
-    "   - libraries           :  ${SIRIUS_LIBRARIES}\n"
-    "   - dependencies :\n"
-    "       - spla\n"
-    "       - SpFFT\n"
-    "       - SPGLIB\n"
-    "       - LibXC\n"
-    "       - fftw3\n"
-    "       - hdf5\n"
-    "       - GSL\n\n")
-
-  if(CP2K_USE_VDWXC)
-    message("     - VDWXC\n")
-  endif()
+  message(" - SIRIUS")
 endif()
 
 if(CP2K_USE_COSMA)
-  message(" - COSMA\n" "   - include directories : ${COSMA_INCLUDE_DIRS}\n"
-          "   - libraries           : ${COSMA_LIBRARIES}\n\n")
-endif()
-
-if(CP2K_USE_QUIP)
-  message(" - QUIP\n"
-          "   - include directories : ${CP2K_LIBQUIP_INCLUDE_DIRS}\n"
-          "   - libraries :           ${CP2K_LIBQUIP_LINK_LIBRARIES}\n\n")
-endif()
-
-if(CP2K_USE_PEXSI)
-  message(" - PEXSI\n\n")
+  message(" - COSMA\n"
+          "   - include directories : ${CP2K_COSMA_INCLUDE_DIRS}\n"
+          "   - libraries           : ${CP2K_COSMA_LINK_LIBRARIES}\n\n")
 endif()
 
 if(CP2K_USE_LIBINT2)
@@ -928,10 +906,10 @@ if(CP2K_USE_ELPA)
           "   - libraries           :  ${CP2K_ELPA_LINK_LIBRARIES}\n\n")
 endif()
 
-if(CP2K_USE_SUPERLU)
-  message(" - superlu\n"
-          "   - include directories : ${CP2K_SUPERLU_INCLUDE_DIRS}\n"
-          "   - libraries           : ${CP2K_SUPERLU_LINK_LIBRARIES}\n\n")
+if(CP2K_USE_DLAF)
+  message(" - DLA-Future\n"
+          "   - include directories : ${CP2K_DLAF_INCLUDE_DIRS}\n"
+          "   - libraries           :  ${CP2K_DLAF_LINK_LIBRARIES}\n\n")
 endif()
 
 message(
@@ -949,6 +927,10 @@ if(NOT CP2K_USE_DFTD4)
   message("   - DFTD4")
 endif()
 
+if(NOT CP2K_USE_DEEPMD)
+  message("   - DeePMD")
+endif()
+
 if(NOT CP2K_USE_SIRIUS)
   message("   - SIRIUS")
 endif()
@@ -957,12 +939,20 @@ if(NOT CP2K_USE_SPGLIB)
   message("   - SPGLIB")
 endif()
 
+if(NOT CP2K_USE_LIBSMEAGOL)
+  message("   - libSMEAGOL")
+endif()
+
 if(NOT CP2K_USE_COSMA)
   message("   - COSMA")
 endif()
 
 if(NOT CP2K_USE_SPLA)
   message("   - SPLA")
+endif()
+
+if(NOT CP2K_USE_HDF5)
+  message("   - HDF5\n")
 endif()
 
 if(${CP2K_USE_ACCEL} MATCHES "NONE")
@@ -974,15 +964,11 @@ if(NOT CP2K_USE_ELPA)
 endif()
 
 if(NOT CP2K_USE_DLAF)
-  message("   - DLAF")
+  message("   - DLA-Future")
 endif()
 
 if(NOT CP2K_USE_PLUMED)
   message("   - PLUMED")
-endif()
-
-if(NOT CP2K_USE_QUIP)
-  message("   - QUIP")
 endif()
 
 if(NOT CP2K_USE_LIBXSMM)
@@ -1003,14 +989,6 @@ endif()
 
 if(NOT CP2K_USE_FFTW3)
   message("   - FFTW3")
-endif()
-
-if(NOT CP2K_USE_PEXSI)
-  message("   - PEXSI")
-endif()
-
-if(NOT CP2K_USE_SUPERLU)
-  message("   - SUPERLU")
 endif()
 
 if(NOT CP2K_USE_LIBTORCH)

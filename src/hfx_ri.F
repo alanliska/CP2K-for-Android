@@ -1,6 +1,6 @@
 !--------------------------------------------------------------------------------------------------!
 !   CP2K: A general program to perform molecular dynamics simulations                              !
-!   Copyright 2000-2024 CP2K developers group <https://cp2k.org>                                   !
+!   Copyright 2000-2025 CP2K developers group <https://cp2k.org>                                   !
 !                                                                                                  !
 !   SPDX-License-Identifier: GPL-2.0-or-later                                                      !
 !--------------------------------------------------------------------------------------------------!
@@ -234,7 +234,7 @@ CONTAINS
          CASE (hfx_ri_do_2c_cholesky)
             CALL dbcsr_copy(t_2c_op_RI_inv(1), t_2c_op_RI(1))
             CALL cp_dbcsr_cholesky_decompose(t_2c_op_RI_inv(1), para_env=para_env, blacs_env=blacs_env)
-            CALL cp_dbcsr_cholesky_invert(t_2c_op_RI_inv(1), para_env=para_env, blacs_env=blacs_env, upper_to_full=.TRUE.)
+            CALL cp_dbcsr_cholesky_invert(t_2c_op_RI_inv(1), para_env=para_env, blacs_env=blacs_env, uplo_to_full=.TRUE.)
          CASE (hfx_ri_do_2c_diag)
             CALL dbcsr_copy(t_2c_op_RI_inv(1), t_2c_op_RI(1))
             CALL cp_dbcsr_power(t_2c_op_RI_inv(1), -1.0_dp, ri_data%eps_eigval, n_dependent, &
@@ -718,7 +718,7 @@ CONTAINS
                                max_iter=ri_data%max_iter_lanczos, converged=converged)
 
          IF (.NOT. converged) THEN
-            CPWARN("Condition number estimate of (P|Q) (HFX potential) is not reliable (not converged).")
+            CPWARN("Not converged: unreliable condition number estimate of (P|Q) matrix (HFX potential).")
          END IF
 
          IF (ri_data%unit_nr > 0) THEN
@@ -737,7 +737,7 @@ CONTAINS
                                   max_iter=ri_data%max_iter_lanczos, converged=converged)
 
             IF (.NOT. converged) THEN
-               CPWARN("Condition number estimate of (P|Q) matrix (RI metric) is not reliable (not converged).")
+               CPWARN("Not converged: unreliable condition number estimate of (P|Q) matrix (RI metric).")
             END IF
 
             IF (ri_data%unit_nr > 0) THEN
@@ -818,7 +818,7 @@ CONTAINS
       CASE (hfx_ri_do_2c_cholesky)
          CALL dbcsr_copy(t_2c_int_mat(1), t_2c_op_RI(1))
          CALL cp_dbcsr_cholesky_decompose(t_2c_int_mat(1), para_env=para_env, blacs_env=blacs_env)
-         CALL cp_dbcsr_cholesky_invert(t_2c_int_mat(1), para_env=para_env, blacs_env=blacs_env, upper_to_full=.TRUE.)
+         CALL cp_dbcsr_cholesky_invert(t_2c_int_mat(1), para_env=para_env, blacs_env=blacs_env, uplo_to_full=.TRUE.)
       CASE (hfx_ri_do_2c_diag)
          CALL dbcsr_copy(t_2c_int_mat(1), t_2c_op_RI(1))
          CALL cp_dbcsr_power(t_2c_int_mat(1), -1.0_dp, ri_data%eps_eigval, n_dependent, &
@@ -3853,7 +3853,7 @@ CONTAINS
       CASE (hfx_ri_do_2c_cholesky)
          CALL dbcsr_copy(ri_2c_inv, ri_2c_ints)
          CALL cp_dbcsr_cholesky_decompose(ri_2c_inv, para_env=para_env, blacs_env=blacs_env)
-         CALL cp_dbcsr_cholesky_invert(ri_2c_inv, para_env=para_env, blacs_env=blacs_env, upper_to_full=.TRUE.)
+         CALL cp_dbcsr_cholesky_invert(ri_2c_inv, para_env=para_env, blacs_env=blacs_env, uplo_to_full=.TRUE.)
       CASE (hfx_ri_do_2c_diag)
          CALL dbcsr_copy(ri_2c_inv, ri_2c_ints)
          CALL cp_dbcsr_power(ri_2c_inv, -1.0_dp, ri_data%eps_eigval, n_dependent, &

@@ -1,6 +1,6 @@
 !--------------------------------------------------------------------------------------------------!
 !   CP2K: A general program to perform molecular dynamics simulations                              !
-!   Copyright 2000-2024 CP2K developers group <https://cp2k.org>                                   !
+!   Copyright 2000-2025 CP2K developers group <https://cp2k.org>                                   !
 !                                                                                                  !
 !   SPDX-License-Identifier: GPL-2.0-or-later                                                      !
 !--------------------------------------------------------------------------------------------------!
@@ -28,14 +28,9 @@ MODULE gw_utils
                                               cp_cfm_to_fm,&
                                               cp_cfm_type
    USE cp_control_types,                ONLY: dft_control_type
-   USE cp_dbcsr_api,                    ONLY: dbcsr_create,&
-                                              dbcsr_distribution_release,&
-                                              dbcsr_distribution_type,&
-                                              dbcsr_p_type,&
-                                              dbcsr_release,&
-                                              dbcsr_set,&
-                                              dbcsr_type,&
-                                              dbcsr_type_no_symmetry
+   USE cp_dbcsr_api,                    ONLY: &
+        dbcsr_create, dbcsr_distribution_release, dbcsr_distribution_type, dbcsr_p_type, &
+        dbcsr_release, dbcsr_set, dbcsr_type, dbcsr_type_no_symmetry, dbcsr_type_symmetric
    USE cp_dbcsr_operations,             ONLY: copy_dbcsr_to_fm,&
                                               copy_fm_to_dbcsr,&
                                               cp_dbcsr_dist2d_to_dist,&
@@ -66,9 +61,11 @@ MODULE gw_utils
    USE input_constants,                 ONLY: do_potential_truncated,&
                                               large_cell_Gamma,&
                                               ri_rpa_g0w0_crossing_newton,&
+                                              rtp_method_bse,&
                                               small_cell_full_kp,&
                                               xc_none
-   USE input_section_types,             ONLY: section_vals_get_subs_vals,&
+   USE input_section_types,             ONLY: section_vals_get,&
+                                              section_vals_get_subs_vals,&
                                               section_vals_type,&
                                               section_vals_val_get,&
                                               section_vals_val_set
@@ -87,7 +84,8 @@ MODULE gw_utils
    USE mathconstants,                   ONLY: gaussi,&
                                               z_one,&
                                               z_zero
-   USE mathlib,                         ONLY: gcd
+   USE mathlib,                         ONLY: diag_complex,&
+                                              gcd
    USE message_passing,                 ONLY: mp_cart_type,&
                                               mp_para_env_type
    USE minimax_exp,                     ONLY: get_exp_minimax_coeff
@@ -222,7 +220,8 @@ CONTAINS
       ! Recommendation in case of memory issues: first perform GW calculation without calculating
       !                                          LDOS (to safe memor). Then, use GW restart files
       !                                          in a subsequent calculation to calculate the LDOS
-      IF (.NOT. bs_env%do_ldos) THEN
+      ! Marek : TODO - boolean that does not interfere with RTP init but sets this to correct value
+      IF (.NOT. bs_env%do_ldos .AND. .FALSE.) THEN
          CALL qs_env_part_release(qs_env)
       END IF
 
@@ -247,7 +246,11 @@ CONTAINS
       ! 2. consume a lot of memory and should not be kept until the quantity is
       !    deallocated in bs_env_release
 
-      IF (ASSOCIATED(bs_env%nl_3c%ij_list)) CALL neighbor_list_3c_destroy(bs_env%nl_3c)
+      IF (ASSOCIATED(bs_env%nl_3c%ij_list) .AND. (bs_env%rtp_method == rtp_method_bse)) THEN
+         IF (bs_env%unit_nr > 0) WRITE (bs_env%unit_nr, *) "Retaining nl_3c for RTBSE"
+      ELSE
+         CALL neighbor_list_3c_destroy(bs_env%nl_3c)
+      END IF
 
       CALL cp_libint_static_cleanup()
 
@@ -280,6 +283,8 @@ CONTAINS
       CALL section_vals_val_get(gw_sec, "CUTOFF_RADIUS_RI", r_val=bs_env%ri_metric%cutoff_radius)
       CALL section_vals_val_get(gw_sec, "MEMORY_PER_PROC", r_val=bs_env%input_memory_per_proc_GB)
       CALL section_vals_val_get(gw_sec, "APPROX_KP_EXTRAPOL", l_val=bs_env%approx_kp_extrapol)
+      CALL section_vals_val_get(gw_sec, "SIZE_LATTICE_SUM", i_val=bs_env%size_lattice_sum_V)
+      CALL section_vals_val_get(gw_sec, "KPOINTS_W", i_vals=bs_env%nkp_grid_chi_eps_W_input)
       CALL section_vals_val_get(gw_sec, "HEDIN_SHIFT", l_val=bs_env%do_hedin_shift)
 
       CALL timestop(handle)
@@ -357,7 +362,10 @@ CONTAINS
       DO ikind = 1, n_kind
          CALL get_qs_kind(qs_kind=qs_kind_set(ikind), basis_set=basis_set_a, &
                           basis_type="RI_AUX")
-         CPASSERT(ASSOCIATED(basis_set_a))
+         IF (.NOT. ASSOCIATED(basis_set_a)) THEN
+            CALL cp_abort(__LOCATION__, &
+                          "At least one RI_AUX basis set was not explicitly invoked in &KIND-section.")
+         END IF
       END DO
 
       ALLOCATE (bs_env%i_RI_start_from_atom(n_atom))
@@ -446,38 +454,58 @@ CONTAINS
 
       periodic(1:3) = bs_env%periodic(1:3)
 
-      DO i_dim = 1, 3
+      CPASSERT(SIZE(bs_env%nkp_grid_chi_eps_W_input) == 3)
 
-         CPASSERT(periodic(i_dim) == 0 .OR. periodic(i_dim) == 1)
+      IF (bs_env%nkp_grid_chi_eps_W_input(1) > 0 .AND. &
+          bs_env%nkp_grid_chi_eps_W_input(2) > 0 .AND. &
+          bs_env%nkp_grid_chi_eps_W_input(3) > 0) THEN
+         ! 1. k-point mesh for χ, ε, W from input
+         DO i_dim = 1, 3
+            SELECT CASE (periodic(i_dim))
+            CASE (0)
+               nkp_grid(i_dim) = 1
+               nkp_grid_extra(i_dim) = 1
+            CASE (1)
+               nkp_grid(i_dim) = bs_env%nkp_grid_chi_eps_W_input(i_dim)
+               nkp_grid_extra(i_dim) = nkp_grid(i_dim)*2
+            CASE DEFAULT
+               CPABORT("Error in periodicity.")
+            END SELECT
+         END DO
 
-         SELECT CASE (periodic(i_dim))
-         CASE (0)
+      ELSE IF (bs_env%nkp_grid_chi_eps_W_input(1) == -1 .AND. &
+               bs_env%nkp_grid_chi_eps_W_input(2) == -1 .AND. &
+               bs_env%nkp_grid_chi_eps_W_input(3) == -1) THEN
+         ! 2. automatic k-point mesh for χ, ε, W
 
-            nkp_grid(i_dim) = 1
-            nkp_grid_extra(i_dim) = 1
+         DO i_dim = 1, 3
 
-         CASE (1)
+            CPASSERT(periodic(i_dim) == 0 .OR. periodic(i_dim) == 1)
 
-            SELECT CASE (bs_env%small_cell_full_kp_or_large_cell_Gamma)
-            CASE (large_cell_Gamma)
-
-               nkp_grid(i_dim) = 4
-               nkp_grid_extra(i_dim) = 6
-
-            CASE (small_cell_full_kp)
-
-               nkp_grid(i_dim) = bs_env%kpoints_scf_desymm%nkp_grid(i_dim)*4
-               nkp_grid_extra(i_dim) = bs_env%kpoints_scf_desymm%nkp_grid(i_dim)*8
-
+            SELECT CASE (periodic(i_dim))
+            CASE (0)
+               nkp_grid(i_dim) = 1
+               nkp_grid_extra(i_dim) = 1
+            CASE (1)
+               SELECT CASE (bs_env%small_cell_full_kp_or_large_cell_Gamma)
+               CASE (large_cell_Gamma)
+                  nkp_grid(i_dim) = 4
+                  nkp_grid_extra(i_dim) = 6
+               CASE (small_cell_full_kp)
+                  nkp_grid(i_dim) = bs_env%kpoints_scf_desymm%nkp_grid(i_dim)*4
+                  nkp_grid_extra(i_dim) = bs_env%kpoints_scf_desymm%nkp_grid(i_dim)*8
+               END SELECT
+            CASE DEFAULT
+               CPABORT("Error in periodicity.")
             END SELECT
 
-         CASE DEFAULT
+         END DO
 
-            CPABORT("Error in periodicity.")
+      ELSE
 
-         END SELECT
+         CPABORT("An error occured when setting up the k-mesh for W.")
 
-      END DO
+      END IF
 
       nkp_orig = MAX(nkp_grid(1)*nkp_grid(2)*nkp_grid(3)/2, 1)
 
@@ -1235,6 +1263,13 @@ CONTAINS
 
       END DO
 
+      ! Marek : In the RTBSE run, check also for zero frequency W
+      IF (bs_env%rtp_method == rtp_method_bse) THEN
+         WRITE (f_W_t, '(3A,I1,A)') TRIM(prefix), "W_freq_rtp", "_0", 0, ".matrix"
+         INQUIRE (file=TRIM(f_W_t), exist=W_time_exists)
+         bs_env%all_W_exist = bs_env%all_W_exist .AND. W_time_exists
+      END IF
+
       IF (bs_env%all_W_exist) THEN
          bs_env%read_chi(:) = .FALSE.
          bs_env%calc_chi(:) = .FALSE.
@@ -1469,18 +1504,13 @@ CONTAINS
 
       CALL timeset(routineN, handle)
 
-      ! Determines number of cells used for summing the cells R in the Coulomb matrix,
-      ! V_PQ(k) = \sum_R <P,cell=0 | 1/r | Q,cell=R>. SIZE_LATTICE_SUM_V 3 gives
-      ! good convergence
-      bs_env%size_lattice_sum_V = 3
-
       ! for generating numerically stable minimax Fourier integration weights
       bs_env%num_points_per_magnitude = 200
 
       ! for periodic systems and for 20 minimax points, we use a regularized minimax mesh
       ! (from experience: regularized minimax meshes converges faster for periodic systems
       !  and for 20 pts)
-      IF (SUM(bs_env%periodic) .NE. 0 .OR. bs_env%num_time_freq_points == 20) THEN
+      IF (SUM(bs_env%periodic) .NE. 0 .OR. bs_env%num_time_freq_points >= 20) THEN
          bs_env%regularization_minimax = 1.0E-6_dp
       ELSE
          bs_env%regularization_minimax = 0.0_dp
@@ -1594,12 +1624,14 @@ CONTAINS
       CHARACTER(LEN=*), PARAMETER                        :: routineN = 'compute_V_xc'
 
       INTEGER                                            :: handle, img, ispin, myfun, nimages
-      REAL(KIND=dp)                                      :: energy_ex, energy_exc, energy_total
+      LOGICAL                                            :: hf_present
+      REAL(KIND=dp)                                      :: energy_ex, energy_exc, energy_total, &
+                                                            myfraction
       TYPE(dbcsr_p_type), DIMENSION(:), POINTER          :: mat_ks_without_v_xc
       TYPE(dbcsr_p_type), DIMENSION(:, :), POINTER       :: matrix_ks_kp
       TYPE(dft_control_type), POINTER                    :: dft_control
       TYPE(qs_energy_type), POINTER                      :: energy
-      TYPE(section_vals_type), POINTER                   :: input, xc_section
+      TYPE(section_vals_type), POINTER                   :: hf_section, input, xc_section
 
       CALL timeset(routineN, handle)
 
@@ -1613,6 +1645,17 @@ CONTAINS
       xc_section => section_vals_get_subs_vals(input, "DFT%XC")
       CALL section_vals_val_get(xc_section, "XC_FUNCTIONAL%_SECTION_PARAMETERS_", i_val=myfun)
       CALL section_vals_val_set(xc_section, "XC_FUNCTIONAL%_SECTION_PARAMETERS_", i_val=xc_none)
+      ! IF (ASSOCIATED(section_vals_get_subs_vals(xc_section, "HF", can_return_null=.TRUE.))) THEN
+      hf_section => section_vals_get_subs_vals(input, "DFT%XC%HF", can_return_null=.TRUE.)
+      hf_present = .FALSE.
+      IF (ASSOCIATED(hf_section)) THEN
+         CALL section_vals_get(hf_section, explicit=hf_present)
+      END IF
+      IF (hf_present) THEN
+         ! Special case for handling hfx
+         CALL section_vals_val_get(xc_section, "HF%FRACTION", r_val=myfraction)
+         CALL section_vals_val_set(xc_section, "HF%FRACTION", r_val=0.0_dp)
+      END IF
 
       ! save the energy before the energy gets updated
       energy_total = energy%total
@@ -1627,7 +1670,12 @@ CONTAINS
 
          DO ispin = 1, bs_env%n_spin
             ALLOCATE (mat_ks_without_v_xc(ispin)%matrix)
-            CALL dbcsr_create(mat_ks_without_v_xc(ispin)%matrix, template=bs_env%mat_ao_ao%matrix)
+            IF (hf_present) THEN
+               CALL dbcsr_create(mat_ks_without_v_xc(ispin)%matrix, template=bs_env%mat_ao_ao%matrix, &
+                                 matrix_type=dbcsr_type_symmetric)
+            ELSE
+               CALL dbcsr_create(mat_ks_without_v_xc(ispin)%matrix, template=bs_env%mat_ao_ao%matrix)
+            END IF
          END DO
 
          ! calculate KS-matrix without XC
@@ -1675,7 +1723,12 @@ CONTAINS
       dft_control%nimages = nimages
 
       ! set the DFT functional and HF fraction back
-      CALL section_vals_val_set(xc_section, "XC_FUNCTIONAL%_SECTION_PARAMETERS_", i_val=myfun)
+      CALL section_vals_val_set(xc_section, "XC_FUNCTIONAL%_SECTION_PARAMETERS_", &
+                                i_val=myfun)
+      IF (hf_present) THEN
+         CALL section_vals_val_set(xc_section, "HF%FRACTION", &
+                                   r_val=myfraction)
+      END IF
 
       IF (bs_env%small_cell_full_kp_or_large_cell_Gamma == small_cell_full_kp) THEN
          ! calculate KS-matrix again with XC
@@ -1717,6 +1770,7 @@ CONTAINS
 
       ALLOCATE (bs_env%imag_freq_points(num_time_freq_points))
       ALLOCATE (bs_env%imag_time_points(num_time_freq_points))
+      ALLOCATE (bs_env%imag_time_weights_freq_zero(num_time_freq_points))
       ALLOCATE (bs_env%weights_cos_t_to_w(num_time_freq_points, num_time_freq_points))
       ALLOCATE (bs_env%weights_cos_w_to_t(num_time_freq_points, num_time_freq_points))
       ALLOCATE (bs_env%weights_sin_t_to_w(num_time_freq_points, num_time_freq_points))
@@ -1789,6 +1843,7 @@ CONTAINS
       END IF
 
       bs_env%imag_time_points(:) = points_and_weights(1:num_time_freq_points)/(2.0_dp*E_min)
+      bs_env%imag_time_weights_freq_zero(:) = points_and_weights(num_time_freq_points + 1:)/(E_min)
 
       DEALLOCATE (points_and_weights)
 
@@ -2941,58 +2996,25 @@ CONTAINS
       CHARACTER(len=*), PARAMETER                        :: routineN = 'power'
 
       COMPLEX(KIND=dp), ALLOCATABLE, DIMENSION(:, :)     :: eigenvectors
-      COMPLEX(KIND=dp), DIMENSION(:), POINTER            :: work
-      COMPLEX(KIND=dp), DIMENSION(:, :), POINTER         :: A
-      INTEGER                                            :: handle, i, info, liwork, lrwork, lwork, n
-      INTEGER, DIMENSION(:), POINTER                     :: iwork
+      INTEGER                                            :: handle, i, n
       REAL(KIND=dp)                                      :: pos_eval
       REAL(KIND=dp), ALLOCATABLE, DIMENSION(:)           :: eigenvalues
-      REAL(KIND=dp), DIMENSION(:), POINTER               :: rwork
 
       CALL timeset(routineN, handle)
-
-      ! code by Ole Schütt
-      IF (SIZE(matrix, 1) /= SIZE(matrix, 2)) CPABORT("expected square matrix")
 
       ! make matrix perfectly Hermitian
       matrix(:, :) = 0.5_dp*(matrix(:, :) + CONJG(TRANSPOSE(matrix(:, :))))
 
       n = SIZE(matrix, 1)
-      ALLOCATE (iwork(1), rwork(1), work(1), A(n, n), eigenvalues(n), eigenvectors(n, n))
-
-      A(:, :) = matrix ! ZHEEVD will overwrite A
-      ! work space query
-      lwork = -1
-      lrwork = -1
-      liwork = -1
-
-      CALL ZHEEVD('V', 'U', n, A(1, 1), n, eigenvalues(1), &
-                  work(1), lwork, rwork(1), lrwork, iwork(1), liwork, info)
-      lwork = INT(REAL(work(1), dp))
-      lrwork = INT(REAL(rwork(1), dp))
-      liwork = iwork(1)
-
-      DEALLOCATE (iwork, rwork, work)
-      ALLOCATE (iwork(liwork))
-      iwork(:) = 0
-      ALLOCATE (rwork(lrwork))
-      rwork(:) = 0.0_dp
-      ALLOCATE (work(lwork))
-      work(:) = CMPLX(0.0_dp, 0.0_dp, KIND=dp)
-
-      CALL ZHEEVD('V', 'U', n, A(1, 1), n, eigenvalues(1), &
-                  work(1), lwork, rwork(1), lrwork, iwork(1), liwork, info)
-
-      eigenvectors(:, :) = A(:, :)
-
-      IF (info /= 0) CPABORT("diagonalization failed")
+      ALLOCATE (eigenvalues(n), eigenvectors(n, n))
+      CALL diag_complex(matrix, eigenvectors, eigenvalues)
 
       IF (PRESENT(cond_nr)) cond_nr = MAXVAL(ABS(eigenvalues))/MINVAL(ABS(eigenvalues))
       IF (PRESENT(min_ev)) min_ev = MINVAL(ABS(eigenvalues))
       IF (PRESENT(max_ev)) max_ev = MAXVAL(ABS(eigenvalues))
 
       DO i = 1, n
-         IF (eigenvalues(i) > eps) THEN
+         IF (eps < eigenvalues(i)) THEN
             pos_eval = (eigenvalues(i))**(0.5_dp*exponent)
          ELSE
             pos_eval = 0.0_dp
@@ -3002,7 +3024,7 @@ CONTAINS
 
       CALL ZGEMM("N", "C", n, n, n, z_one, eigenvectors, n, eigenvectors, n, z_zero, matrix, n)
 
-      DEALLOCATE (iwork, rwork, work, A, eigenvalues, eigenvectors)
+      DEALLOCATE (eigenvalues, eigenvectors)
 
       CALL timestop(handle)
 

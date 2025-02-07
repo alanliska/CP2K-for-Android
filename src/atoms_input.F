@@ -1,6 +1,6 @@
 !--------------------------------------------------------------------------------------------------!
 !   CP2K: A general program to perform molecular dynamics simulations                              !
-!   Copyright 2000-2024 CP2K developers group <https://cp2k.org>                                   !
+!   Copyright 2000-2025 CP2K developers group <https://cp2k.org>                                   !
 !                                                                                                  !
 !   SPDX-License-Identifier: GPL-2.0-or-later                                                      !
 !--------------------------------------------------------------------------------------------------!
@@ -451,7 +451,7 @@ CONTAINS
                dab = SQRT(rab(1)*rab(1) + rab(2)*rab(2) + rab(3)*rab(3))
                IF (shell%max_dist > 0.0_dp .AND. shell%max_dist < dab) THEN
                   IF (output_unit > 0) THEN
-                     WRITE (output_unit, *) "WARNING : shell and core for atom ", at_index(ishell), " seem to be too distant. "
+                     WRITE (output_unit, *) "WARNING : shell and core for atom ", at_index(ishell), " seem to be too distant."
                   END IF
                END IF
 

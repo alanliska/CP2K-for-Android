@@ -1,6 +1,6 @@
 !--------------------------------------------------------------------------------------------------!
 !   CP2K: A general program to perform molecular dynamics simulations                              !
-!   Copyright 2000-2024 CP2K developers group <https://cp2k.org>                                   !
+!   Copyright 2000-2025 CP2K developers group <https://cp2k.org>                                   !
 !                                                                                                  !
 !   SPDX-License-Identifier: GPL-2.0-or-later                                                      !
 !--------------------------------------------------------------------------------------------------!
@@ -46,7 +46,7 @@ MODULE rpa_gw
    USE cp_files,                        ONLY: close_file,&
                                               open_file
    USE cp_fm_basic_linalg,              ONLY: cp_fm_scale_and_add,&
-                                              cp_fm_upper_to_full
+                                              cp_fm_uplo_to_full
    USE cp_fm_cholesky,                  ONLY: cp_fm_cholesky_decompose,&
                                               cp_fm_cholesky_invert
    USE cp_fm_diag,                      ONLY: cp_fm_syevd
@@ -853,7 +853,7 @@ CONTAINS
          ! calculate [1+Q(iw')]^-1
          CALL cp_fm_cholesky_invert(fm_mat_Q)
          ! symmetrize the result, fm_mat_R_gw is only temporary work matrix
-         CALL cp_fm_upper_to_full(fm_mat_Q, fm_mat_R_gw)
+         CALL cp_fm_uplo_to_full(fm_mat_Q, fm_mat_R_gw)
 
          ! periodic correction for GW (paper Phys. Rev. B 95, 235123 (2017))
          IF (do_periodic) THEN
@@ -981,7 +981,7 @@ CONTAINS
       CALL cp_fm_cholesky_invert(fm_mat_Q)
 
       ! symmetrize the result
-      CALL cp_fm_upper_to_full(fm_mat_Q, fm_mat_work)
+      CALL cp_fm_uplo_to_full(fm_mat_Q, fm_mat_work)
 
       ! subtract 1 from the diagonal to get rid of exchange self-energy
 !$OMP           PARALLEL DO DEFAULT(NONE) PRIVATE(jjB,iiB,i_global,j_global) &
@@ -1298,6 +1298,7 @@ CONTAINS
          E_CBM_SCF, E_CBM_SCF_beta, E_VBM_GW, E_VBM_GW_beta, E_VBM_SCF, E_VBM_SCF_beta, stop_crit
       REAL(KIND=dp), ALLOCATABLE, DIMENSION(:)           :: vec_gw_dos
       REAL(KIND=dp), ALLOCATABLE, DIMENSION(:, :, :)     :: m_value, vec_gw_energ, z_value
+      TYPE(cp_logger_type), POINTER                      :: logger
       TYPE(kpoint_type), POINTER                         :: kpoints_Sigma
 
       CALL timeset(routineN, handle)
@@ -1560,7 +1561,12 @@ CONTAINS
                                          homo, unit_nr, do_soc_gw=.TRUE., do_soc_scf=.FALSE.)
          END IF
 
-         iunit = cp_logger_get_default_unit_nr()
+         logger => cp_get_default_logger()
+         IF (logger%para_env%is_source()) THEN
+            iunit = cp_logger_get_default_unit_nr()
+         ELSE
+            iunit = -1
+         END IF
 
          IF (dos_precision /= 0.0_dp) THEN
             IF (iunit > 0) THEN
@@ -2655,8 +2661,8 @@ CONTAINS
 
       CHARACTER(LEN=*), PARAMETER :: routineN = 'compute_eps_head_Berry'
 
-      INTEGER :: col, col_end_in_block, col_offset, col_size, handle, i_col, i_row, ikp, nkp, row, &
-         row_offset, row_size, row_start_in_block
+      INTEGER :: col, col_end_in_block, col_offset, col_size, handle, i_col, i_row, ikp, nkp, nmo, &
+         row, row_offset, row_size, row_start_in_block
       REAL(KIND=dp)                                      :: abs_k_square, cell_volume, &
                                                             correct_kpoint(3), cos_square, &
                                                             eigen_diff, relative_kpoint(3), &
@@ -2674,6 +2680,8 @@ CONTAINS
       NULLIFY (data_block)
 
       nkp = kpoints%nkp
+
+      nmo = SIZE(Eigenval)
 
       ALLOCATE (P_head(nkp))
       P_head(:) = 0.0_dp
@@ -2711,9 +2719,9 @@ CONTAINS
                col_end_in_block = col_size
             END IF
 
-            DO i_row = row_start_in_block, row_size
+            DO i_row = row_start_in_block, MIN(row_size, nmo - row_offset + 1)
 
-               DO i_col = 1, col_end_in_block
+               DO i_col = 1, MIN(col_end_in_block, nmo - col_offset + 1)
 
                   eigen_diff = Eigenval(i_col + col_offset - 1) - Eigenval(i_row + row_offset - 1)
 
@@ -2751,9 +2759,9 @@ CONTAINS
                col_end_in_block = col_size
             END IF
 
-            DO i_row = row_start_in_block, row_size
+            DO i_row = row_start_in_block, MIN(row_size, nmo - row_offset + 1)
 
-               DO i_col = 1, col_end_in_block
+               DO i_col = 1, MIN(col_end_in_block, nmo - col_offset + 1)
 
                   eigen_diff = Eigenval(i_col + col_offset - 1) - Eigenval(i_row + row_offset - 1)
 
@@ -3029,7 +3037,7 @@ CONTAINS
          CALL cp_fm_cholesky_decompose(fm_mat_s_aux_aux_inv)
          CALL cp_fm_cholesky_invert(fm_mat_s_aux_aux_inv)
          ! Symmetrize the guy
-         CALL cp_fm_upper_to_full(fm_mat_s_aux_aux_inv, fm_mat_work_aux_aux)
+         CALL cp_fm_uplo_to_full(fm_mat_s_aux_aux_inv, fm_mat_work_aux_aux)
 
          CALL copy_fm_to_dbcsr(fm_mat_s_aux_aux_inv, matrix_s_inv_aux_aux, keep_sparsity=.FALSE.)
 
@@ -4341,6 +4349,7 @@ CONTAINS
       REAL(KIND=dp), ALLOCATABLE, DIMENSION(:)           :: vec_omega_fit_gw_sign, &
                                                             vec_omega_fit_gw_sign_reorder, &
                                                             vec_sigma_imag, vec_sigma_real
+      TYPE(cp_logger_type), POINTER                      :: logger
 
       CALL timeset(routineN, handle)
 
@@ -4437,7 +4446,12 @@ CONTAINS
       IF (ndos /= 0) THEN
          ! Hedin shift not implemented
          CPASSERT(.NOT. do_hedin_shift)
-         iunit = cp_logger_get_default_unit_nr()
+         logger => cp_get_default_logger()
+         IF (logger%para_env%is_source()) THEN
+            iunit = cp_logger_get_default_unit_nr()
+         ELSE
+            iunit = -1
+         END IF
          DO idos = 1, ndos
             omega_dos = dos_lower_bound + REAL(idos - 1, KIND=dp)*dos_precision
             omega_dos_pade_eval = omega_dos - e_fermi
@@ -4469,7 +4483,12 @@ CONTAINS
       END IF
 
       IF (PRESENT(min_level_self_energy) .AND. PRESENT(max_level_self_energy)) THEN
-         iunit = cp_logger_get_default_unit_nr()
+         logger => cp_get_default_logger()
+         IF (logger%para_env%is_source()) THEN
+            iunit = cp_logger_get_default_unit_nr()
+         ELSE
+            iunit = -1
+         END IF
          IF (n_level_gw_ref >= min_level_self_energy .AND. &
              n_level_gw_ref <= max_level_self_energy .AND. iunit > 0) THEN
 
@@ -4561,7 +4580,12 @@ CONTAINS
 
          END IF
 
-         iunit = cp_logger_get_default_unit_nr()
+         logger => cp_get_default_logger()
+         IF (logger%para_env%is_source()) THEN
+            iunit = cp_logger_get_default_unit_nr()
+         ELSE
+            iunit = -1
+         END IF
          CALL open_file(TRIM(filename), unit_number=iunit, file_status="UNKNOWN", file_action="WRITE")
 
          num_omega = 10000

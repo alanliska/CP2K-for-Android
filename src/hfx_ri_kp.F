@@ -1,6 +1,6 @@
 !--------------------------------------------------------------------------------------------------!
 !   CP2K: A general program to perform molecular dynamics simulations                              !
-!   Copyright 2000-2024 CP2K developers group <https://cp2k.org>                                   !
+!   Copyright 2000-2025 CP2K developers group <https://cp2k.org>                                   !
 !                                                                                                  !
 !   SPDX-License-Identifier: GPL-2.0-or-later                                                      !
 !--------------------------------------------------------------------------------------------------!
@@ -533,8 +533,9 @@ CONTAINS
          CALL section_vals_val_set(hfx_section, "KP_NGROUPS", i_val=ngroups)
       END IF
       IF ((MOD(ngroups, natom) .NE. 0) .AND. (MOD(natom, ngroups) .NE. 0) .AND. geometry_did_change) THEN
-         IF (ngroups > 1) &
+         IF (ngroups > 1) THEN
             CPWARN("Better load balancing is reached if NGROUPS is a multiple/divisor of the number of atoms")
+         END IF
       END IF
       group_size = para_env%num_pe/ngroups
       igroup = para_env%mepos/group_size
@@ -2252,7 +2253,7 @@ CONTAINS
                CALL dbcsr_copy(work_tight_inv, work_tight)
                CALL cp_dbcsr_cholesky_decompose(work_tight_inv, para_env=para_env, blacs_env=blacs_env)
                CALL cp_dbcsr_cholesky_invert(work_tight_inv, para_env=para_env, blacs_env=blacs_env, &
-                                             upper_to_full=.TRUE.)
+                                             uplo_to_full=.TRUE.)
             CASE (hfx_ri_do_2c_diag)
                CALL dbcsr_copy(work_tight_inv, work_tight)
                CALL cp_dbcsr_power(work_tight_inv, -1.0_dp, ri_data%eps_eigval, n_dependent, &

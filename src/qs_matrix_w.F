@@ -1,6 +1,6 @@
 !--------------------------------------------------------------------------------------------------!
 !   CP2K: A general program to perform molecular dynamics simulations                              !
-!   Copyright 2000-2024 CP2K developers group <https://cp2k.org>                                   !
+!   Copyright 2000-2025 CP2K developers group <https://cp2k.org>                                   !
 !                                                                                                  !
 !   SPDX-License-Identifier: GPL-2.0-or-later                                                      !
 !--------------------------------------------------------------------------------------------------!
@@ -45,7 +45,7 @@ MODULE qs_matrix_w
 
    CHARACTER(len=*), PARAMETER, PRIVATE :: moduleN = 'qs_matrix_w'
 
-   PUBLIC :: qs_energies_compute_matrix_w
+   PUBLIC :: compute_matrix_w
 
 CONTAINS
 
@@ -58,11 +58,11 @@ CONTAINS
 !>      05.2013 created [Florian Schiffmann]
 ! **************************************************************************************************
 
-   SUBROUTINE qs_energies_compute_matrix_w(qs_env, calc_forces)
+   SUBROUTINE compute_matrix_w(qs_env, calc_forces)
       TYPE(qs_environment_type), POINTER                 :: qs_env
       LOGICAL, INTENT(IN)                                :: calc_forces
 
-      CHARACTER(len=*), PARAMETER :: routineN = 'qs_energies_compute_matrix_w'
+      CHARACTER(len=*), PARAMETER                        :: routineN = 'compute_matrix_w'
 
       INTEGER                                            :: handle, is, ispin, nao, nspin
       LOGICAL                                            :: do_kpoints, has_unit_metric
@@ -168,6 +168,6 @@ CONTAINS
 
       CALL timestop(handle)
 
-   END SUBROUTINE qs_energies_compute_matrix_w
+   END SUBROUTINE compute_matrix_w
 
 END MODULE qs_matrix_w

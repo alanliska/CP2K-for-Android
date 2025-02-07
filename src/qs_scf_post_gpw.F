@@ -1,6 +1,6 @@
 !--------------------------------------------------------------------------------------------------!
 !   CP2K: A general program to perform molecular dynamics simulations                              !
-!   Copyright 2000-2024 CP2K developers group <https://cp2k.org>                                   !
+!   Copyright 2000-2025 CP2K developers group <https://cp2k.org>                                   !
 !                                                                                                  !
 !   SPDX-License-Identifier: GPL-2.0-or-later                                                      !
 !--------------------------------------------------------------------------------------------------!
@@ -54,6 +54,7 @@ MODULE qs_scf_post_gpw
    USE cp_realspace_grid_cube,          ONLY: cp_pw_to_cube
    USE dct,                             ONLY: pw_shrink
    USE ed_analysis,                     ONLY: edmf_analysis
+   USE eeq_method,                      ONLY: eeq_print
    USE et_coupling_types,               ONLY: set_et_coupling_type
    USE hfx_ri,                          ONLY: print_ri_hfx
    USE hirshfeld_methods,               ONLY: comp_hirshfeld_charges,&
@@ -83,7 +84,6 @@ MODULE qs_scf_post_gpw
                                               default_string_length,&
                                               dp
    USE kpoint_types,                    ONLY: kpoint_type
-   USE lapack,                          ONLY: lapack_sgesv
    USE mao_wfn_analysis,                ONLY: mao_analysis
    USE mathconstants,                   ONLY: pi
    USE memory_utilities,                ONLY: reallocate
@@ -193,6 +193,7 @@ MODULE qs_scf_post_gpw
    USE scf_control_types,               ONLY: scf_control_type
    USE stm_images,                      ONLY: th_stm_image
    USE transport,                       ONLY: qs_scf_post_transport
+   USE trexio_utils,                    ONLY: write_trexio
    USE virial_types,                    ONLY: virial_type
    USE voronoi_interface,               ONLY: entry_voronoi_or_bqb
    USE xray_diffraction,                ONLY: calculate_rhotot_elec_gspace,&
@@ -400,6 +401,8 @@ CONTAINS
          p_loc = p_loc .OR. BTEST(cp_print_key_should_output(logger%iter_info, print_key), cp_p_file)
          print_key => section_vals_get_subs_vals(loc_print_section, "MOLECULAR_MOMENTS")
          p_loc = p_loc .OR. BTEST(cp_print_key_should_output(logger%iter_info, print_key), cp_p_file)
+         print_key => section_vals_get_subs_vals(loc_print_section, "WANNIER_STATES")
+         p_loc = p_loc .OR. BTEST(cp_print_key_should_output(logger%iter_info, print_key), cp_p_file)
       ELSE
          p_loc = .FALSE.
       END IF
@@ -422,8 +425,6 @@ CONTAINS
                        "therefore localization of unoccupied states will be skipped!")
          p_loc_lumo = .FALSE.
       END IF
-      print_key => section_vals_get_subs_vals(loc_print_section, "WANNIER_STATES")
-      p_loc = p_loc .OR. BTEST(cp_print_key_should_output(logger%iter_info, print_key), cp_p_file)
 
       ! Control for STM
       stm_section => section_vals_get_subs_vals(input, "DFT%PRINT%STM")
@@ -468,9 +469,7 @@ CONTAINS
       END IF
       ! Makes the MOs eigenstates, computes eigenvalues, write cubes
       IF (do_kpoints) THEN
-         IF (do_mo_cubes) THEN
-            CPWARN("Print MO cubes not implemented for k-point calculations")
-         END IF
+         CPWARN_IF(do_mo_cubes, "Print MO cubes not implemented for k-point calculations")
       ELSE
          CALL get_qs_env(qs_env, &
                          mos=mos, &
@@ -506,7 +505,7 @@ CONTAINS
       !  - Possibly gets molecular states
       IF (p_loc_homo) THEN
          IF (do_kpoints) THEN
-            CPWARN("Localization not implemented for k-point calculations!!")
+            CPWARN("Localization not implemented for k-point calculations!")
          ELSEIF (dft_control%restricted &
                  .AND. (section_get_ival(localize_section, "METHOD") .NE. do_loc_none) &
                  .AND. (section_get_ival(localize_section, "METHOD") .NE. do_loc_jacobi)) THEN
@@ -669,7 +668,7 @@ CONTAINS
 
       IF (p_loc_mixed) THEN
          IF (do_kpoints) THEN
-            CPWARN("Localization not implemented for k-point calculations!!")
+            CPWARN("Localization not implemented for k-point calculations!")
          ELSEIF (dft_control%restricted) THEN
             IF (output_unit > 0) WRITE (output_unit, *) &
                " Unclear how we define MOs / localization in the restricted case... skipping"
@@ -1531,8 +1530,7 @@ CONTAINS
 
          ELSE
             ! not implemented
-            CPWARN("ELF not implemented for GAPW calculations!!")
-
+            CPWARN("ELF not implemented for GAPW calculations!")
          END IF
 
       END IF ! print key
@@ -1687,7 +1685,7 @@ CONTAINS
       CHARACTER(len=*), PARAMETER :: routineN = 'write_mo_dependent_results'
 
       INTEGER                                            :: handle, homo, ispin, nmo, output_unit
-      LOGICAL                                            :: all_equal, do_kpoints
+      LOGICAL                                            :: all_equal, do_kpoints, explicit
       REAL(KIND=dp)                                      :: maxocc, s_square, s_square_ideal, &
                                                             total_abs_spin_dens
       REAL(KIND=dp), DIMENSION(:), POINTER               :: mo_eigenvalues, occupation_numbers
@@ -1714,7 +1712,8 @@ CONTAINS
       TYPE(qs_rho_type), POINTER                         :: rho
       TYPE(qs_subsys_type), POINTER                      :: subsys
       TYPE(scf_control_type), POINTER                    :: scf_control
-      TYPE(section_vals_type), POINTER                   :: dft_section, input, sprint_section
+      TYPE(section_vals_type), POINTER                   :: dft_section, input, sprint_section, &
+                                                            trexio_section
 
       CALL timeset(routineN, handle)
 
@@ -1749,6 +1748,11 @@ CONTAINS
       dft_section => section_vals_get_subs_vals(input, "DFT")
       IF (.NOT. qs_env%run_rtp) THEN
          CALL qs_scf_write_mos(qs_env, scf_env, final_mos=.TRUE.)
+         trexio_section => section_vals_get_subs_vals(dft_section, "PRINT%TREXIO")
+         CALL section_vals_get(trexio_section, explicit=explicit)
+         IF (explicit) THEN
+            CALL write_trexio(qs_env, trexio_section)
+         END IF
          IF (.NOT. do_kpoints) THEN
             CALL get_qs_env(qs_env, mos=mos, matrix_ks=ks_rmpv)
             CALL write_dm_binary_restart(mos, dft_section, ks_rmpv)
@@ -2665,6 +2669,15 @@ CONTAINS
          END IF
       END IF
 
+      ! Compute EEQ charges
+      print_key => section_vals_get_subs_vals(input, "DFT%PRINT%EEQ_CHARGES")
+      IF (BTEST(cp_print_key_should_output(logger%iter_info, print_key), cp_p_file)) THEN
+         unit_nr = cp_print_key_unit_nr(logger, input, "DFT%PRINT%EEQ_CHARGES", extension=".eeq", log_filename=.FALSE.)
+         print_level = 1
+         CALL eeq_print(qs_env, unit_nr, print_level, ext=.FALSE.)
+         CALL cp_print_key_finished_output(unit_nr, logger, input, "DFT%PRINT%MULLIKEN")
+      END IF
+
       ! Do a Voronoi Integration or write a compressed BQB File
       print_key_voro => section_vals_get_subs_vals(input, "DFT%PRINT%VORONOI")
       print_key_bqb => section_vals_get_subs_vals(input, "DFT%PRINT%E_DENSITY_BQB")
@@ -2928,7 +2941,7 @@ CONTAINS
       CALL sg_overlap(smat, l, a, a)
       CALL sg_overlap(tmat, l, a, b)
       v(:, 1) = MATMUL(tmat, cb)
-      CALL lapack_sgesv(n, 1, smat, n, ipiv, v, n, info)
+      CALL dgesv(n, 1, smat, n, ipiv, v, n, info)
       CPASSERT(info == 0)
       ca(:) = v(:, 1)
 
@@ -2965,7 +2978,7 @@ CONTAINS
          afun(:) = grid_atom%rad(:)**l*EXP(-a(i)*grid_atom%rad2(:))
          v(i, 1) = SUM(afun(:)*bfun(:)*grid_atom%wr(:))
       END DO
-      CALL lapack_sgesv(n, 1, smat, n, ipiv, v, n, info)
+      CALL dgesv(n, 1, smat, n, ipiv, v, n, info)
       CPASSERT(info == 0)
       ca(:) = v(:, 1)
 

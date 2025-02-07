@@ -1,6 +1,6 @@
 !--------------------------------------------------------------------------------------------------!
 !   CP2K: A general program to perform molecular dynamics simulations                              !
-!   Copyright 2000-2024 CP2K developers group <https://cp2k.org>                                   !
+!   Copyright 2000-2025 CP2K developers group <https://cp2k.org>                                   !
 !                                                                                                  !
 !   SPDX-License-Identifier: GPL-2.0-or-later                                                      !
 !--------------------------------------------------------------------------------------------------!
@@ -73,6 +73,7 @@ MODULE pwdft_environment_types
       TYPE(pwdft_energy_type), POINTER                 :: energy => NULL()
       REAL(KIND=dp), DIMENSION(:, :), POINTER          :: forces => NULL()
       REAL(KIND=dp), DIMENSION(3, 3)                   :: stress = 0.0_dp
+      LOGICAL                                          :: ignore_convergence_failure = .FALSE.
 !     16 different functionals should be enough
       CHARACTER(len=80), DIMENSION(16)                 :: xc_func = ""
 #if defined(__SIRIUS)

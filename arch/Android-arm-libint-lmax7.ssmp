@@ -11,11 +11,11 @@
 #
 # 
 
-CC             := /path/to/gcc
-CXX            := /path/to/g++
-FC             := /path/to/gfortran
-LD             := /path/to/gfortran
-AR             := /path/to/ar -r
+CC             := /path/to/cross-compiler-gcc
+CXX            := /path/to/cross-compiler-g++
+FC             := /path/to/cross-compiler-gfortran
+LD             := /path/to/cross-compiler-gfortran
+AR             := /path/to/cross-compiler-ar -r
 
 CFLAGS         := -O2 -fopenmp -fopenmp-simd -ftree-vectorize -funroll-loops -g -pie -fPIC
 
@@ -24,8 +24,10 @@ DFLAGS         += -D__MAX_CONTR=7
 DFLAGS         += -D__NO_STATM_ACCESS
 # following flag is necessary for Android cross-compilation
 DFLAGS         += -D__GNUC__=8
+# because of openmp_trace.c - execinfo.h exists only in GLIBC, not in BIONIC
+DFLAGS         += -D__CYGWIN__
 
-INSTALL_PATH   := /path/to/install
+INSTALL_PATH   := /home/debian/CP2K_arm
 
    LIBXC_INC      := $(INSTALL_PATH)/libxc_arm/include
    LIBXC_LIB      := $(INSTALL_PATH)/libxc_arm/lib

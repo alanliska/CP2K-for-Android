@@ -2,11 +2,12 @@
 
 # author: Ole Schuett
 
-from asyncio import Semaphore
+from asyncio import Semaphore, Task
 from asyncio.subprocess import DEVNULL, PIPE, STDOUT, Process
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Coroutine, Dict, List, Optional, TextIO, Tuple, Union
+from statistics import mean, stdev
 import argparse
 import asyncio
 import math
@@ -145,7 +146,7 @@ async def main() -> None:
         batches.append(batch)
 
     # Create async tasks.
-    tasks = []
+    tasks: List[Task[BatchResult]] = []
     num_restrictdirs = num_skipdirs = 0
     for batch in batches:
         if not batch.requirements_satisfied(flags, cfg.mpiranks):
@@ -193,26 +194,29 @@ async def main() -> None:
     timings = sorted(r.duration for r in all_results)
     print('Plot: name="timings", title="Timing Distribution", ylabel="time [s]"')
     for p in (100, 99, 98, 95, 90, 80):
-        v = percentile(timings, p / 100.0)
+        y = percentile(timings, p / 100.0)
         print(f'PlotPoint: name="{p}th_percentile", plot="timings", ', end="")
-        print(f'label="{p}th %ile", y={v:.2f}, yerr=0.0')
+        print(f'label="{p}th %ile", y={y:.2f}, yerr=0.0')
 
     if cfg.flag_slow:
         print("\n" + "-" * 15 + "--------------- Slow Tests ---------------" + "-" * 15)
-        slow_test_threshold = 2 * percentile(timings, 0.95)
-        maybe_slow = [r for r in all_results if r.duration > slow_test_threshold]
-        suppressions = cfg.slow_suppressions
-        slow_reruns: List[str] = []
-        for batch in {r.batch for r in maybe_slow if r.fullname not in suppressions}:
-            print(f"Re-running {batch.name} to avoid false positives.")
-            res = (await run_batch(batch, cfg)).results
-            slow_reruns += [r.fullname for r in res if r.duration > slow_test_threshold]
-        slow_tests = [r for r in maybe_slow if r.fullname in slow_reruns]
-        num_suppressed = len([r for r in maybe_slow if r.fullname in suppressions])
-        print(f"Duration threshold (2x 95th %ile): {slow_test_threshold:.2f} sec")
+        threshold = 2 * percentile(timings, 0.95)
+        outliers = [r for r in all_results if r.duration > threshold]
+        maybe_slow = [r for r in outliers if r.fullname not in cfg.slow_suppressions]
+        num_suppressed = len(outliers) - len(maybe_slow)
+        rerun_tasks: List[Task[BatchResult]] = []
+        for b in {r.batch for r in maybe_slow}:
+            print(f"Re-running {b.name} to avoid false positives.")
+            rerun_tasks.append(asyncio.get_event_loop().create_task(run_batch(b, cfg)))
+        rerun_times: Dict[str, float] = {}
+        for t in await asyncio.gather(*rerun_tasks):
+            rerun_times.update({r.fullname: r.duration for r in t.results})
+        stats = {r.fullname: [r.duration, rerun_times[r.fullname]] for r in maybe_slow}
+        slow_tests = {k: v for k, v in stats.items() if mean(v) > threshold}
+        print(f"Duration threshold (2x 95th %ile): {threshold:.2f} sec")
         print(f"Found {len(slow_tests)} slow tests ({num_suppressed} suppressed):")
-        for r in slow_tests:
-            print(f"    {r.fullname :<80s} ( {r.duration:6.2f} sec)")
+        for k, v in slow_tests.items():
+            print(f"    {k :<80s} ( {mean(v):6.2f} ±{stdev(v):4.2f} sec)")
 
     print("\n------------------------------- Summary --------------------------------")
     total_duration = time.perf_counter() - start_time
@@ -246,7 +250,7 @@ class Config:
         default_ompthreads = 2 if "smp" in args.version else 1
         self.ompthreads = args.ompthreads if args.ompthreads else default_ompthreads
         self.mpiranks = args.mpiranks if self.use_mpi else 1
-        self.num_workers = int(args.maxtasks / self.ompthreads / self.mpiranks)
+        self.num_workers = int(args.maxtasks / self.ompthreads / self.mpiranks) or 1
         self.workers = Semaphore(self.num_workers)
         self.cp2k_root = Path(__file__).resolve().parent.parent
         self.mpiexec = args.mpiexec
@@ -265,7 +269,7 @@ class Config:
         self.skip_unittests = args.skip_unittests
         self.skip_regtests = args.skip_regtests
         datestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        leaf_dir = f"TEST-{args.version}-{datestamp}"
+        leaf_dir = f"TEST-{datestamp}"
         self.work_base_dir = (args.workbasedir or args.binary_dir).resolve() / leaf_dir
         self.error_summary = self.work_base_dir / "error_summary"
 
@@ -302,11 +306,11 @@ class Config:
             env["CUDA_VISIBLE_DEVICES"] = ",".join(visible_gpu_devices)
             env["HIP_VISIBLE_DEVICES"] = ",".join(visible_gpu_devices)
         env["OMP_NUM_THREADS"] = str(self.ompthreads)
-        exe_path = Path(f"{exe_stem}.{self.version}")
-        if exe_path.is_absolute():
-            cmd = [str(exe_path)]
-        else:
-            cmd = [str(self.binary_dir / f"{exe_stem}.{self.version}")]
+        env["PIKA_COMMANDLINE_OPTIONS"] = (
+            f"--pika:bind=none --pika:threads={self.ompthreads}"
+        )
+        exe_name = f"{exe_stem}.{self.version}"
+        cmd = [str(self.binary_dir / exe_name)]
         if self.valgrind:
             cmd = ["valgrind", "--error-exitcode=42", "--exit-on-first-error=yes"] + cmd
         if self.use_mpi:
@@ -386,10 +390,15 @@ class Batch:
         self.huge_suppressions = cfg.huge_suppressions
 
     def requirements_satisfied(self, flags: List[str], mpiranks: int) -> bool:
+        result = True
         for r in self.requirements:
-            if not (r in flags or ("mpiranks" in r and eval(r.replace("||", " or ")))):
-                return False
-        return True
+            if "mpiranks" in r:
+                result &= eval(r.replace("||", " or "))
+            elif r.startswith("!"):
+                result &= r[1:] not in flags
+            else:
+                result &= r in flags
+        return result
 
 
 # ======================================================================================

@@ -1,6 +1,6 @@
 !--------------------------------------------------------------------------------------------------!
 !   CP2K: A general program to perform molecular dynamics simulations                              !
-!   Copyright 2000-2024 CP2K developers group <https://cp2k.org>                                   !
+!   Copyright 2000-2025 CP2K developers group <https://cp2k.org>                                   !
 !                                                                                                  !
 !   SPDX-License-Identifier: GPL-2.0-or-later                                                      !
 !--------------------------------------------------------------------------------------------------!
@@ -182,7 +182,9 @@ CONTAINS
       nex_kinds = xas_tdp_env%nex_kinds
       nex_atoms = xas_tdp_env%nex_atoms
       do_xc = xas_tdp_control%do_xc
-      IF (PRESENT(ltddfpt) .AND. ltddfpt) do_xc = .FALSE.
+      IF (PRESENT(ltddfpt)) THEN
+         IF (ltddfpt) do_xc = .FALSE.
+      END IF
       nspins = 1; IF (xas_tdp_control%do_uks .OR. xas_tdp_control%do_roks) nspins = 2
 
       xas_atom_env%nspins = nspins
@@ -833,7 +835,7 @@ CONTAINS
 
       ELSE
          CALL cp_dbcsr_cholesky_decompose(ri_sinv, para_env=para_env, blacs_env=blacs_env)
-         CALL cp_dbcsr_cholesky_invert(ri_sinv, para_env=para_env, blacs_env=blacs_env, upper_to_full=.TRUE.)
+         CALL cp_dbcsr_cholesky_invert(ri_sinv, para_env=para_env, blacs_env=blacs_env, uplo_to_full=.TRUE.)
          CALL dbcsr_filter(ri_sinv, 1.E-10_dp) !make sure ri_sinv is sparse coming out of fm routines
       END IF
       CALL dbcsr_replicate_all(ri_sinv)

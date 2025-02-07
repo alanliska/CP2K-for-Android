@@ -1,6 +1,6 @@
 !--------------------------------------------------------------------------------------------------!
 !   CP2K: A general program to perform molecular dynamics simulations                              !
-!   Copyright 2000-2024 CP2K developers group <https://cp2k.org>                                   !
+!   Copyright 2000-2025 CP2K developers group <https://cp2k.org>                                   !
 !                                                                                                  !
 !   SPDX-License-Identifier: GPL-2.0-or-later                                                      !
 !--------------------------------------------------------------------------------------------------!
@@ -190,8 +190,9 @@ CONTAINS
       CALL para_env%bcast(positions)
       CALL para_env%bcast(ml_range)
 
-      IF (ml_range(1) /= 1 .OR. ml_range(2) /= natoms) &
+      IF (ml_range(1) /= 1 .OR. ml_range(2) /= natoms) THEN
          CPWARN("Skipping some atoms for PAO-ML training.")
+      END IF
 
       ! create cell from read-in h-matrix
       CALL cell_create(cell, hmat)

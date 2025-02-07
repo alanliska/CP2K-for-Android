@@ -3,13 +3,13 @@
 # CP2K Darwin arch file for a parallel arm64 binary
 # (https://www.cp2k.org/howto:compile_on_macos)
 #
-# Tested with: GNU 14.2.0 and OpenMPI 5.0.5 on an Apple M1 (macOS 15.0 Sequoia)
+# Tested with: GNU 14.2.0 and OpenMPI 5.0.6 on an Apple M1 (macOS 15.3 Sequoia)
 #
 # Usage: Source this arch file and then run make as instructed.
 #        Ensure the links in /opt/homebrew/bin to the gcc version
 #        and "brew unlink openmpi" (or mpich) if installed.
 #
-# Last update: 17.09.2024
+# Last update: 28.01.2025
 #
 # \
    if [[ "${0}" == "${BASH_SOURCE}" ]]; then \
@@ -26,15 +26,18 @@
       brew install cmake; \
       brew install coreutils; \
       brew install fftw; \
+      brew install gawk; \
       brew install gcc; \
       brew install gsed; \
       brew install gsl; \
       brew install hdf5; \
+      brew install libaec; \
       brew install libxc; \
       brew install ninja; \
       brew install openblas; \
       brew install pkg-config; \
       brew install wget; \
+      brew install zlib; \
    else \
       echo "ERROR: Homebrew installation not found"; \
       echo '  Run: /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'; \
@@ -45,7 +48,7 @@
       --with-cmake=$(brew --prefix cmake) --with-elpa=no --with-fftw=$(brew --prefix fftw) --with-gcc=system \
       --with-gsl=$(brew --prefix gsl) --with-hdf5=$(brew --prefix hdf5) --with-libxc=$(brew --prefix libxc) \
       --with-ninja=$(brew --prefix ninja) --with-openblas=$(brew --prefix openblas) --with-${mpi_implementation} \
-      --with-libxsmm=no --with-pexsi=no --with-quip=no; \
+      --with-libsmeagol --with-libtorch=no --with-deepmd=no; \
    source ./install/setup; \
    cd ../..; \
    echo; \
@@ -54,8 +57,8 @@
    echo "If everything is OK, you can build a CP2K production binary with"; \
    echo "   make -j ARCH=${this_file%.*} VERSION=${this_file##*.} TARGET_CPU=${target_cpu}"; \
    echo; \
-   echo "Alternatively, you can add further checks, e.g. for regression testing, with"; \
-   echo "   make -j ARCH=${this_file%.*} VERSION=${this_file##*.} TARGET_CPU=${target_cpu} DO_CHECKS=yes"; \
+   echo "The Accelerate framework is used instead of OpenBLAS with"; \
+   echo "   make -j ARCH=${this_file%.*} VERSION=${this_file##*.} TARGET_CPU=${target_cpu} USE_OPENBLAS="; \
    echo; \
    echo "Run always the following command before using the CP2K binary"; \
    echo "   source ${PWD}/tools/toolchain/install/setup"; \
@@ -72,14 +75,17 @@ USE_COSMA      := $(COSMA_VER)
 USE_DFTD4      := $(DFTD4_VER)
 USE_LIBGRPP    := $(LIBGRPP_VER)
 USE_LIBINT     := $(LIBINT_VER)
+USE_LIBSMEAGOL := $(LIBSMEAGOL_VER)
 USE_LIBVORI    := $(LIBVORI_VER)
 USE_LIBXSMM    := $(LIBXSMM_VER)
+USE_OPENBLAS   := $(OPENBLAS_VER)
 USE_PLUMED     := $(PLUMED_VER)
 USE_SCALAPACK  := $(SCALAPACK_VER)
 USE_SIRIUS     := $(SIRIUS_VER)
 USE_SPFFT      := $(SPFFT_VER)
 USE_SPGLIB     := $(SPGLIB_VER)
 USE_SPLA       := $(SPLA_VER)
+USE_TREXIO     := $(TREXIO_VER)
 
 LMAX           := 5
 MAX_CONTR      := 4
@@ -92,9 +98,7 @@ AR             := ar -r -s
 CFLAGS         := -O2 -fopenmp -fopenmp-simd -ftree-vectorize -funroll-loops -g -mtune=$(TARGET_CPU)
 
 DFLAGS         := -D__parallel
-DFLAGS         += -D__ACCELERATE
 DFLAGS         += -D__MPI_F08
-DFLAGS         += -D__HAS_IEEE_EXCEPTIONS
 DFLAGS         += -D__MAX_CONTR=$(strip $(MAX_CONTR))
 DFLAGS         += -D__NO_STATM_ACCESS
 
@@ -172,7 +176,6 @@ ifneq ($(USE_LIBINT),)
    CFLAGS         += -I$(LIBINT_INC)
    DFLAGS         += -D__LIBINT
    LIBS           += $(LIBINT_LIB)/libint2.a
-   LIBS           += $(LIBINT_LIB)/libint2.a
 endif
 
 ifneq ($(USE_SPGLIB),)
@@ -231,12 +234,22 @@ ifneq ($(USE_SPLA),)
    LIBS           += $(SPLA_LIB)/libspla.a
 endif
 
+ifneq ($(USE_LIBSMEAGOL),)
+   USE_LIBSMEAGOL := $(strip $(USE_LIBSMEAGOL))
+   LIBSMEAGOL_LIB := $(INSTALL_PATH)/libsmeagol-$(USE_LIBSMEAGOL)/lib
+   LIBSMEAGOL_INC := $(INSTALL_PATH)/libsmeagol-$(USE_LIBSMEAGOL)/include
+   CFLAGS         += -I$(LIBSMEAGOL_INC)
+   DFLAGS         += -D__SMEAGOL
+   LIBS           += $(LIBSMEAGOL_LIB)/libsmeagol.a
+endif
+
 HDF5_HOME      := $(shell brew --prefix hdf5)
 CFLAGS         += -I$(HDF5_HOME)/include
 DFLAGS         += -D__HDF5
 LIBS           += $(HDF5_HOME)/lib/libhdf5_fortran.a
 LIBS           += $(HDF5_HOME)/lib/libhdf5_f90cstub.a
 LIBS           += $(HDF5_HOME)/lib/libhdf5.a
+LIBS           += $(shell brew --prefix zlib)/lib/libz.a
 LIBS           += $(shell brew --prefix libaec)/lib/libsz.a
 
 ifneq ($(USE_COSMA),)
@@ -265,9 +278,25 @@ CFLAGS         += -I$(GSL_HOME)/include
 DFLAGS         += -D__GSL
 LIBS           += $(GSL_HOME)/lib/libgsl.a
 
-OPENBLAS_HOME  := $(shell brew --prefix openblas)
-CFLAGS         += -I$(OPENBLAS_HOME)/include
-LIBS           += $(OPENBLAS_HOME)/lib/libopenblas.a
+ifneq ($(USE_OPENBLAS),)
+   OPENBLAS_HOME  := $(shell brew --prefix openblas)
+   CFLAGS         += -I$(OPENBLAS_HOME)/include
+   LIBS           += $(OPENBLAS_HOME)/lib/libopenblas.a
+else
+   # Linking to the Accelerate framework instead of OpenBLAS is not the default
+   # because of failing tests
+   DFLAGS         += -D__ACCELERATE
+   LIBS           += -framework Accelerate
+endif
+
+ifneq ($(USE_TREXIO),)
+   USE_TREXIO     := $(strip $(USE_TREXIO))
+   TREXIO_INC     := $(INSTALL_PATH)/trexio-$(USE_TREXIO)/include
+   TREXIO_LIB     := $(INSTALL_PATH)/trexio-$(USE_TREXIO)/lib
+   CFLAGS         += -I$(TREXIO_INC)
+   DFLAGS         += -D__TREXIO
+   LIBS           += $(TREXIO_LIB)/libtrexio.a
+endif
 
 CFLAGS         += $(DFLAGS)
 
@@ -279,8 +308,8 @@ FCFLAGS        += -ffree-line-length-none
 FCFLAGS        += -fno-omit-frame-pointer
 FCFLAGS        += -std=f2008
 
-LDFLAGS        += $(FCFLAGS) -ld_classic
+LDFLAGS        += $(FCFLAGS)
 
-LIBS           += -lz -ldl -lstdc++
+LIBS           += -ldl -lstdc++
 
 # End

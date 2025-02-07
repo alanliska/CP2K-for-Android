@@ -99,7 +99,7 @@ OPTIONS:
                           or --with-openblas options will switch --math-mode to the
                           respective modes.
 --gpu-ver                 Selects the GPU architecture for which to compile. Available
-                          options are: K20X, K40, K80, P100, V100, Mi50, Mi100, Mi250, 
+                          options are: K20X, K40, K80, P100, V100, Mi50, Mi100, Mi250,
                           and no.
                           This setting determines the value of nvcc's '-arch' flag.
                           Default = no.
@@ -146,12 +146,14 @@ The --with-PKG options follow the rules:
   --with-PKG              The option keyword alone will be equivalent to
                           --with-PKG=install
 
-  --with-gcc              The GCC compiler to use to compile CP2K.
+  --with-gcc              Use the GNU compiler to build CP2K.
                           Default = system
-  --with-intel            Use the Intel compiler to compile CP2K.
+  --with-intel            Use the Intel compiler to build CP2K.
                           Default = system
   --with-ifx              Use the new Intel Fortran compiler ifx instead of ifort to compile CP2K.
                           Default = no
+  --with-amd              Use the AMD compiler to build CP2K.
+                          Default = system
   --with-cmake            Cmake utilities
                           Default = install
   --with-ninja            Ninja utilities
@@ -173,7 +175,7 @@ The --with-PKG options follow the rules:
                           integrals, needed for hybrid functional calculations
                           Default = install
   --with-libgrpp          libgrpp, library for the evaluation of ECP integrals, needed
-                          for any calculations with semi-local ECP pseudopotentials 
+                          for any calculations with semi-local ECP pseudopotentials
                           Default = install
   --with-fftw             FFTW3, library for fast fourier transform
                           Default = install
@@ -197,21 +199,16 @@ The --with-PKG options follow the rules:
                           Default = install
   --with-cusolvermp       NVIDIA cusolverMp: CUDA library for distributed dense linear algebra.
                           Default = no
-  --with-ptscotch         PT-SCOTCH, only used if PEXSI is used
-                          Default = no
-  --with-superlu          SuperLU DIST, used only if PEXSI is used
-                          Default = no
-  --with-pexsi            Enable interface to PEXSI library
-                          Default = no
-  --with-quip             Enable interface to QUIP library
-                          Default = no
   --with-deepmd           Enable interface to DeePMD-kit library.
                           Default = no
   --with-plumed           Enable interface to the PLUMED library.
                           Default = no
   --with-sirius           Enable interface to the plane wave SIRIUS library.
-                          This package requires: gsl, libspg, elpa, scalapack, hdf5 and libxc.
+                          This package requires: gsl, libspg, elpa, scalapack, hdf5, libxc and pugixml
                           Default = install
+  --with-pugixml          Enable support for XML parsing using the pugixml library.
+                          This library is required by SIRIUS.
+                          Default = no (unless a SIRIUS installation is requested)
   --with-gsl              Enable the gnu scientific library (required for PLUMED and SIRIUS)
                           Default = install
   --with-libvdwxc         Enable support of Van der Waals interactions in SIRIUS. Support provided by libvdwxc
@@ -219,7 +216,7 @@ The --with-PKG options follow the rules:
   --with-spglib           Enable the spg library (search of symmetry groups)
                           This package depends on cmake.
                           Default = install
-  --with-hdf5             Enable the hdf5 library (used by the sirius library)
+  --with-hdf5             Enable the hdf5 library (used by the sirius and trexio libraries)
                           Default = install
   --with-spfft            Enable the spare fft used in SIRIUS (hard dependency)
                           Default = install
@@ -231,9 +228,13 @@ The --with-PKG options follow the rules:
                           Default = install
   --with-libtorch         Enable libtorch the machine learning framework needed for NequIP and Allegro
                           Default = no
+  --with-libsmeagol       Enable interface to SMEAGOL NEGF library
+                          Default = no
   --with-dftd4            Enable the DFTD4 package by Grimme
                           This package requires cmake, ninja
                           Default = install
+  --with-trexio           Enable the trexio library (read/write TREXIO files)
+                          Default = no
 
 FURTHER INSTRUCTIONS
 
@@ -266,12 +267,12 @@ EOF
 # PACKAGE LIST: register all new dependent tools and libs here. Order
 # is important, the first in the list gets installed first
 # ------------------------------------------------------------------------
-tool_list="gcc intel cmake ninja"
+tool_list="gcc intel amd cmake ninja"
 mpi_list="mpich openmpi intelmpi"
 math_list="mkl acml openblas"
 lib_list="fftw libint libxc libgrpp libxsmm cosma scalapack elpa cusolvermp plumed \
-          spfft spla ptscotch superlu pexsi quip gsl spglib hdf5 libvdwxc sirius
-          libvori libtorch deepmd dftd4"
+          spfft spla gsl spglib hdf5 libvdwxc sirius
+          libvori libtorch deepmd dftd4 pugixml libsmeagol trexio"
 package_list="${tool_list} ${mpi_list} ${math_list} ${lib_list}"
 # ------------------------------------------------------------------------
 
@@ -307,11 +308,12 @@ fi
 with_acml="__SYSTEM__"
 with_openblas="__INSTALL__"
 
-# sirius is activated by default
+# SIRIUS is activated by default
 with_sirius="__INSTALL__"
 with_gsl="__DONTUSE__"
 with_spglib="__INSTALL__"
 with_hdf5="__DONTUSE__"
+with_trexio="__DONTUSE__"
 with_elpa="__INSTALL__"
 with_cusolvermp="__DONTUSE__"
 with_libvdwxc="__DONTUSE__"
@@ -322,6 +324,7 @@ with_libvori="__INSTALL__"
 with_libtorch="__DONTUSE__"
 with_ninja="__DONTUSE__"
 with_dftd4="__DONTUSE__"
+with_libsmeagol="__DONTUSE__"
 
 # for MPI, we try to detect system MPI variant
 if (command -v mpiexec > /dev/null 2>&1); then
@@ -331,12 +334,17 @@ if (command -v mpiexec > /dev/null 2>&1); then
     export MPI_MODE="mpich"
     with_mpich="__SYSTEM__"
   elif (mpiexec --version 2>&1 | grep -s -q "OpenRTE"); then
-    echo "MPI is detected and it appears to be OpenMPI"
+    echo "MPI is detected and it appears to be OpenMPI 4 (or older)"
+    export MPI_MODE="openmpi"
+    with_openmpi="__SYSTEM__"
+  elif (mpiexec --version 2>&1 | grep -s -q "Open MPI"); then
+    echo "MPI is detected and it appears to be OpenMPI 5"
     export MPI_MODE="openmpi"
     with_openmpi="__SYSTEM__"
   elif (mpiexec --version 2>&1 | grep -s -q "Intel"); then
     echo "MPI is detected and it appears to be Intel MPI"
     with_gcc="__DONTUSE__"
+    with_amd="__DONTUSE__"
     with_intel="__SYSTEM__"
     with_intelmpi="__SYSTEM__"
     export MPI_MODE="intelmpi"
@@ -380,6 +388,7 @@ if [ "${CRAY_LD_LIBRARY_PATH}" ]; then
   export MPI_MODE="mpich"
   # set default value for some installers appropriate for CLE
   with_gcc="__DONTUSE__"
+  with_amd="__DONTUSE__"
   with_intel="__DONTUSE__"
   with_fftw="__SYSTEM__"
   with_scalapack="__DONTUSE__"
@@ -417,7 +426,9 @@ while [ $# -ge 1 ]; do
     --install-all)
       # set all package to the default installation status
       for ii in ${package_list}; do
-        if [ "${ii}" != "intel" ] && [ "${ii}" != "intelmpi" ]; then
+        if [ "${ii}" != "intel" ] &&
+          [ "${ii}" != "intelmpi" ] &&
+          [ "${ii}" != "amd" ]; then
           eval with_${ii}="__INSTALL__"
         fi
       done
@@ -565,6 +576,9 @@ while [ $# -ge 1 ]; do
         export MPI_MODE=intelmpi
       fi
       ;;
+    --with-amd*)
+      with_amd=$(read_with "${1}" "__SYSTEM__")
+      ;;
     --with-ifx*)
       with_ifx=$(read_with "${1}" "yes")
       ;;
@@ -613,18 +627,6 @@ while [ $# -ge 1 ]; do
     --with-cusolvermp*)
       with_cusolvermp=$(read_with "${1}")
       ;;
-    --with-ptscotch*)
-      with_ptscotch=$(read_with "${1}")
-      ;;
-    --with-superlu*)
-      with_superlu=$(read_with "${1}")
-      ;;
-    --with-pexsi*)
-      with_pexsi=$(read_with "${1}")
-      ;;
-    --with-quip*)
-      with_quip=$(read_with "${1}")
-      ;;
     --with-deepmd*)
       with_deepmd=$(read_with $1)
       ;;
@@ -633,6 +635,9 @@ while [ $# -ge 1 ]; do
       ;;
     --with-sirius*)
       with_sirius=$(read_with "${1}")
+      ;;
+    --with-pugixml*)
+      with_pugixml=$(read_with "${1}")
       ;;
     --with-gsl*)
       with_gsl=$(read_with "${1}")
@@ -664,6 +669,12 @@ while [ $# -ge 1 ]; do
     --with-dftd4*)
       with_dftd4=$(read_with "${1}")
       ;;
+    --with-libsmeagol*)
+      with_libsmeagol=$(read_with "${1}")
+      ;;
+    --with-trexio*)
+      with_trexio=$(read_with "${1}")
+      ;;
     --help*)
       show_help
       exit 0
@@ -692,8 +703,16 @@ export ENABLE_CRAY="${enable_cray}"
 # ------------------------------------------------------------------------
 # Compiler conflicts
 if [ "${with_intel}" != "__DONTUSE__" ] && [ "${with_gcc}" = "__INSTALL__" ]; then
-  echo "You have chosen to use the Intel compiler, therefore the installation of the GCC compiler will be skipped."
+  echo "You have chosen to use the Intel compiler, therefore the installation of the GNU compiler will be skipped."
   with_gcc="__SYSTEM__"
+fi
+if [ "${with_amd}" != "__DONTUSE__" ] && [ "${with_gcc}" = "__INSTALL__" ]; then
+  echo "You have chosen to use the AMD compiler, therefore the installation of the GNU compiler will be skipped."
+  with_gcc="__SYSTEM__"
+fi
+if [ "${with_amd}" != "__DONTUSE__" ] && [ "${with_intel}" != "__DONTUSE__" ]; then
+  report_error "You have chosen to use the AMD and the Intel compiler. Select only one compiler."
+  exit 1
 fi
 # MPI library conflicts
 if [ "${MPI_MODE}" = "no" ]; then
@@ -705,12 +724,8 @@ if [ "${MPI_MODE}" = "no" ]; then
     echo "Not using MPI, so ELPA is disabled."
     with_elpa="__DONTUSE__"
   fi
-  if [ "${with_pexsi}" != "__DONTUSE__" ]; then
-    echo "Not using MPI, so PEXSI is disabled."
-    with_pexsi="__DONTUSE__"
-  fi
   if [ "${with_sirius}" != "__DONTUSE__" ]; then
-    echo "Not using MPI, so sirius is disabled"
+    echo "Not using MPI, so SIRIUS is disabled"
     with_sirius="__DONTUSE__"
   fi
   if [ "${with_spfft}" != "__DONTUSE__" ]; then
@@ -728,7 +743,7 @@ if [ "${MPI_MODE}" = "no" ]; then
 else
   # if gcc is installed, then mpi needs to be installed too
   if [ "${with_gcc}" = "__INSTALL__" ]; then
-    echo "You have chosen to install the GCC compiler, therefore MPI libraries have to be installed too"
+    echo "You have chosen to install the GNU compiler, therefore MPI libraries have to be installed too"
     case ${MPI_MODE} in
       mpich)
         with_mpich="__INSTALL__"
@@ -776,30 +791,6 @@ if [ "${ENABLE_OPENCL}" = "__TRUE__" ]; then
   fi
 fi
 
-# PEXSI and its dependencies
-if [ "${with_pexsi}" = "__DONTUSE__" ]; then
-  if [ "${with_ptscotch}" != "__DONTUSE__" ]; then
-    echo "Not using PEXSI, so PT-Scotch is disabled."
-    with_ptscotch="__DONTUSE__"
-  fi
-  if [ "${with_superlu}" != "__DONTUSE__" ]; then
-    echo "Not using PEXSI, so SuperLU-DIST is disabled."
-    with_superlu="__DONTUSE__"
-  fi
-elif [ "${with_pexsi}" = "__INSTALL__" ]; then
-  [ "${with_ptscotch}" = "__DONTUSE__" ] && with_ptscotch="__INSTALL__"
-  [ "${with_superlu}" = "__DONTUSE__" ] && with_superlu="__INSTALL__"
-else
-  if [ "${with_ptscotch}" = "__DONTUSE__" ]; then
-    report_error "For PEXSI to work you need a working PT-Scotch library use --with-ptscotch option to specify if you wish to install the library or specify its location."
-    exit 1
-  fi
-  if [ "${with_superlu}" = "__DONTUSE__" ]; then
-    report_error "For PEXSI to work you need a working SuperLU-DIST library use --with-superlu option to specify if you wish to install the library or specify its location."
-    exit 1
-  fi
-fi
-
 #dftd4 installation requires ninja
 if [ "${with_dftd4}" = "__INSTALL__" ]; then
   [ "${with_ninja}" = "__DONTUSE__" ] && with_ninja="__INSTALL__"
@@ -809,8 +800,8 @@ fi
 if [ "${with_spglib}" = "__INSTALL__" ] ||
   [ "${with_libvori}" = "__INSTALL__" ] ||
   [ "${with_scalapack}" = "__INSTALL__" ] ||
-  [ "${with_superlu}" = "__INSTALL__" ] ||
   [ "${with_sirius}" = "__INSTALL__" ] ||
+  [ "${with_pugixml}" = "__INSTALL__" ] ||
   [ "${with_cosma}" = "__INSTALL__" ] ||
   [ "${with_spfft}" = "__INSTALL__" ] ||
   [ "${with_spla}" = "__INSTALL__" ] ||
@@ -830,11 +821,22 @@ if [ "${with_sirius}" = "__INSTALL__" ]; then
   [ "${with_hdf5}" = "__DONTUSE__" ] && with_hdf5="__INSTALL__"
   [ "${with_libvdwxc}" = "__DONTUSE__" ] && with_libvdwxc="__INSTALL__"
   [ "${with_cosma}" = "__DONTUSE__" ] && with_cosma="__INSTALL__"
+  [ "${with_pugixml}" = "__DONTUSE__" ] && with_pugixml="__INSTALL__"
+elif [ "${with_sirius}" = "__DONTUSE__" ]; then
+  with_pugixml="__DONTUSE__"
+fi
+
+if [ "${with_trexio}" = "__INSTALL__" ]; then
+  [ "${with_hdf5}" = "__DONTUSE__" ] && with_hdf5="__INSTALL__"
 fi
 
 if [ "${with_plumed}" = "__INSTALL__" ]; then
   [ "${with_gsl}" = "__DONTUSE__" ] && with_gsl="__INSTALL__"
   [ "${with_fftw}" = "__DONTUSE__" ] && with_fftw="__INSTALL__"
+fi
+
+if [ "${with_deepmd}" = "__INSTALL__" ]; then
+  [ "${with_libtorch}" = "__DONTUSE__" ] && with_libtorch="__INSTALL__"
 fi
 
 # ------------------------------------------------------------------------

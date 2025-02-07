@@ -1,6 +1,6 @@
 !--------------------------------------------------------------------------------------------------!
 !   CP2K: A general program to perform molecular dynamics simulations                              !
-!   Copyright 2000-2024 CP2K developers group <https://cp2k.org>                                   !
+!   Copyright 2000-2025 CP2K developers group <https://cp2k.org>                                   !
 !                                                                                                  !
 !   SPDX-License-Identifier: GPL-2.0-or-later                                                      !
 !--------------------------------------------------------------------------------------------------!
@@ -79,7 +79,7 @@ MODULE cp_eri_mme_interface
    TYPE cp_eri_mme_param
       TYPE(cp_logger_type), POINTER                      :: logger => NULL()
       ! There is a bug with some older compilers preventing a default initialization of  derived types with allocatable components
-#if __GNUC__ < 9 || (__GNUC__ == 9 && __GNUC_MINOR__ < 5)
+#if defined(FTN_NO_DEFAULT_INIT)
       TYPE(eri_mme_param)                                :: par = eri_mme_param(minimax_grid=NULL())
 #else
       TYPE(eri_mme_param)                                :: par = eri_mme_param()

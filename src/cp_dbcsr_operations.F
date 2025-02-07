@@ -1,6 +1,6 @@
 !--------------------------------------------------------------------------------------------------!
 !   CP2K: A general program to perform molecular dynamics simulations                              !
-!   Copyright 2000-2024 CP2K developers group <https://cp2k.org>                                   !
+!   Copyright 2000-2025 CP2K developers group <https://cp2k.org>                                   !
 !                                                                                                  !
 !   SPDX-License-Identifier: GPL-2.0-or-later                                                      !
 !--------------------------------------------------------------------------------------------------!
@@ -466,7 +466,7 @@ CONTAINS
 !>
 ! **************************************************************************************************
    SUBROUTINE dbcsr_multiply_local(matrix_a, vec_b, vec_c, ncol, alpha)
-      TYPE(dbcsr_type), INTENT(IN)                    :: matrix_a
+      TYPE(dbcsr_type), INTENT(IN)                       :: matrix_a
       REAL(dp), DIMENSION(:, :), INTENT(IN)              :: vec_b
       REAL(dp), DIMENSION(:, :), INTENT(INOUT)           :: vec_c
       INTEGER, INTENT(in), OPTIONAL                      :: ncol
@@ -479,7 +479,7 @@ CONTAINS
       LOGICAL                                            :: has_symm
       REAL(dp)                                           :: my_alpha, my_alpha2
       REAL(dp), DIMENSION(:, :), POINTER                 :: data_d
-      TYPE(dbcsr_iterator_type)                            :: iter
+      TYPE(dbcsr_iterator_type)                          :: iter
 
       CALL timeset(routineN, timing_handle)
 
@@ -559,8 +559,8 @@ CONTAINS
 !>
 ! **************************************************************************************************
    SUBROUTINE cp_dbcsr_sm_fm_multiply(matrix, fm_in, fm_out, ncol, alpha, beta)
-      TYPE(dbcsr_type), INTENT(IN)                    :: matrix
-      TYPE(cp_fm_type), INTENT(IN)                          :: fm_in, fm_out
+      TYPE(dbcsr_type), INTENT(IN)                       :: matrix
+      TYPE(cp_fm_type), INTENT(IN)                       :: fm_in, fm_out
       INTEGER, INTENT(IN)                                :: ncol
       REAL(dp), INTENT(IN), OPTIONAL                     :: alpha, beta
 
@@ -575,7 +575,7 @@ CONTAINS
                                                             row_dist, col_dist, col_blk_size
       TYPE(dbcsr_type)                                   :: in, out
       REAL(dp)                                           :: my_alpha, my_beta
-      TYPE(dbcsr_distribution_type)                       :: dist, dist_right_in, product_dist
+      TYPE(dbcsr_distribution_type)                      :: dist, dist_right_in, product_dist
 
       CALL timeset(routineN, timing_handle)
 
@@ -1196,8 +1196,9 @@ CONTAINS
 
 !   ---------------------------------------------------------------------------
 
-      IF (MOD(nbins*nimages, multiplicity) .NE. 0) &
+      IF (MOD(nbins*nimages, multiplicity) .NE. 0) THEN
          CPWARN("mulitplicity is not divisor of new process grid coordinate")
+      END IF
       old_nbins = (nbins*nimages)/multiplicity
       ALLOCATE (bin_multiplier(0:old_nbins - 1))
       bin_multiplier(:) = 0

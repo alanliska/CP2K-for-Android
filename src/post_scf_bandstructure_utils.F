@@ -1,6 +1,6 @@
 !--------------------------------------------------------------------------------------------------!
 !   CP2K: A general program to perform molecular dynamics simulations                              !
-!   Copyright 2000-2024 CP2K developers group <https://cp2k.org>                                   !
+!   Copyright 2000-2025 CP2K developers group <https://cp2k.org>                                   !
 !                                                                                                  !
 !   SPDX-License-Identifier: GPL-2.0-or-later                                                      !
 !--------------------------------------------------------------------------------------------------!
@@ -18,8 +18,8 @@ MODULE post_scf_bandstructure_utils
                                               get_cell,&
                                               pbc
    USE cp_blacs_env,                    ONLY: cp_blacs_env_type
-   USE cp_cfm_basic_linalg,             ONLY: cp_cfm_cholesky_decompose,&
-                                              cp_cfm_scale
+   USE cp_cfm_basic_linalg,             ONLY: cp_cfm_scale
+   USE cp_cfm_cholesky,                 ONLY: cp_cfm_cholesky_decompose
    USE cp_cfm_diag,                     ONLY: cp_cfm_geeig,&
                                               cp_cfm_geeig_canon,&
                                               cp_cfm_heevd
@@ -832,6 +832,7 @@ CONTAINS
       TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(particle_type), DIMENSION(:), POINTER         :: particle_set
       TYPE(scf_control_type), POINTER                    :: scf_control
+      TYPE(section_vals_type), POINTER                   :: input
 
       CALL timeset(routineN, handle)
 
@@ -882,6 +883,10 @@ CONTAINS
       END IF
 
       u = bs_env%unit_nr
+
+      ! Marek : Get and save the rtp method
+      CALL get_qs_env(qs_env=qs_env, input=input)
+      CALL section_vals_val_get(input, "DFT%REAL_TIME_PROPAGATION%RTBSE%_SECTION_PARAMETERS_", i_val=bs_env%rtp_method)
 
       IF (u > 0) THEN
          WRITE (u, FMT="(T2,2A,T73,I8)") "Number of occupied molecular orbitals (MOs) ", &

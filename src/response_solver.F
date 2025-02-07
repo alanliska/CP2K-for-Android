@@ -1,6 +1,6 @@
 !--------------------------------------------------------------------------------------------------!
 !   CP2K: A general program to perform molecular dynamics simulations                              !
-!   Copyright 2000-2024 CP2K developers group <https://cp2k.org>                                   !
+!   Copyright 2000-2025 CP2K developers group <https://cp2k.org>                                   !
 !                                                                                                  !
 !   SPDX-License-Identifier: GPL-2.0-or-later                                                      !
 !--------------------------------------------------------------------------------------------------!
@@ -147,7 +147,7 @@ MODULE response_solver
    USE virial_types,                    ONLY: virial_type
    USE xtb_ehess,                       ONLY: xtb_coulomb_hessian
    USE xtb_ehess_force,                 ONLY: calc_xtb_ehess_force
-   USE xtb_matrices,                    ONLY: xtb_hab_force
+   USE xtb_hab_force,                   ONLY: build_xtb_hab_force
    USE xtb_types,                       ONLY: get_xtb_atom_param,&
                                               xtb_atom_type
 #include "./base/base_uses.f90"
@@ -351,31 +351,39 @@ CONTAINS
          ! CPKS vector cpmos - RHS of response equation as Ax + b = 0 (sign of b)
          ! Sign is changed in linres_solver!
          ! Projector Q applied in linres_solver!
-         CALL get_qs_env(qs_env, mos=mos)
-         ALLOCATE (cpmos(nspins), mo_occ(nspins))
-         DO ispin = 1, nspins
-            CALL get_mo_set(mo_set=mos(ispin), mo_coeff=mo_coeff, homo=nocc)
-            NULLIFY (fm_struct)
-            CALL cp_fm_struct_create(fm_struct, ncol_global=nocc, &
-                                     template_fmstruct=mo_coeff%matrix_struct)
-            CALL cp_fm_create(cpmos(ispin), fm_struct)
-            CALL cp_fm_set_all(cpmos(ispin), 0.0_dp)
-            CALL cp_fm_create(mo_occ(ispin), fm_struct)
-            CALL cp_fm_to_fm(mo_coeff, mo_occ(ispin), nocc)
-            CALL cp_fm_struct_release(fm_struct)
-         END DO
+         IF (ASSOCIATED(ec_env%cpmos)) THEN
 
-         focc = 2.0_dp
-         IF (nspins == 1) focc = 4.0_dp
-         DO ispin = 1, nspins
-            CALL get_mo_set(mo_set=mos(ispin), mo_coeff=mo_coeff, homo=nocc)
-            CALL cp_dbcsr_sm_fm_multiply(ec_env%matrix_hz(ispin)%matrix, mo_occ(ispin), &
-                                         cpmos(ispin), nocc, &
-                                         alpha=focc, beta=0.0_dp)
-         END DO
-         CALL cp_fm_release(mo_occ)
+            CALL response_equation_new(qs_env, p_env, ec_env%cpmos, unit_nr)
 
-         CALL response_equation_new(qs_env, p_env, cpmos, unit_nr)
+         ELSE
+            CALL get_qs_env(qs_env, mos=mos)
+            ALLOCATE (cpmos(nspins), mo_occ(nspins))
+            DO ispin = 1, nspins
+               CALL get_mo_set(mo_set=mos(ispin), mo_coeff=mo_coeff, homo=nocc)
+               NULLIFY (fm_struct)
+               CALL cp_fm_struct_create(fm_struct, ncol_global=nocc, &
+                                        template_fmstruct=mo_coeff%matrix_struct)
+               CALL cp_fm_create(cpmos(ispin), fm_struct)
+               CALL cp_fm_set_all(cpmos(ispin), 0.0_dp)
+               CALL cp_fm_create(mo_occ(ispin), fm_struct)
+               CALL cp_fm_to_fm(mo_coeff, mo_occ(ispin), nocc)
+               CALL cp_fm_struct_release(fm_struct)
+            END DO
+
+            focc = 2.0_dp
+            IF (nspins == 1) focc = 4.0_dp
+            DO ispin = 1, nspins
+               CALL get_mo_set(mo_set=mos(ispin), mo_coeff=mo_coeff, homo=nocc)
+               CALL cp_dbcsr_sm_fm_multiply(ec_env%matrix_hz(ispin)%matrix, mo_occ(ispin), &
+                                            cpmos(ispin), nocc, &
+                                            alpha=focc, beta=0.0_dp)
+            END DO
+            CALL cp_fm_release(mo_occ)
+
+            CALL response_equation_new(qs_env, p_env, cpmos, unit_nr)
+
+            CALL cp_fm_release(cpmos)
+         END IF
 
          ! Get the response density matrix,
          ! and energy-weighted response density matrix
@@ -383,7 +391,6 @@ CONTAINS
             CALL dbcsr_copy(ec_env%matrix_z(ispin)%matrix, p_env%p1(ispin)%matrix)
             CALL dbcsr_copy(ec_env%matrix_wz(ispin)%matrix, p_env%w1(ispin)%matrix)
          END DO
-         CALL cp_fm_release(cpmos)
 
       CASE (ec_ls_solver)
 
@@ -2491,6 +2498,12 @@ CONTAINS
          IF (iounit > 0) WRITE (iounit, "(T3,A,T33,3F16.8)") "DEBUG:: Total Force ", fodeb
          DEALLOCATE (ftot1, ftot2, ftot3)
       END IF
+      IF (debug_stress .AND. use_virial) THEN
+         stdeb = fconv*(virial%pv_virial - sttot)
+         CALL para_env%sum(stdeb)
+         IF (iounit > 0) WRITE (UNIT=iounit, FMT="(T2,A,T41,2(1X,ES19.11))") &
+            'STRESS| Stress Response    ', one_third_sum_diag(stdeb), det_3x3(stdeb)
+      END IF
 
       IF (do_ex) THEN
          CALL dbcsr_deallocate_matrix_set(mpa)
@@ -2599,7 +2612,7 @@ CONTAINS
       END IF
       ! Hcore  matrix
       IF (debug_forces) fodeb(1:3) = force(1)%all_potential(1:3, 1)
-      CALL xtb_hab_force(qs_env, mpa(1)%matrix)
+      CALL build_xtb_hab_force(qs_env, mpa(1)%matrix)
       IF (debug_forces) THEN
          fodeb(1:3) = force(1)%all_potential(1:3, 1) - fodeb(1:3)
          CALL para_env%sum(fodeb)

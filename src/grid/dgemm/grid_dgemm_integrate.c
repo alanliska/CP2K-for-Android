@@ -1,6 +1,6 @@
 /*----------------------------------------------------------------------------*/
 /*  CP2K: A general program to perform molecular dynamics simulations         */
-/*  Copyright 2000-2024 CP2K developers group <https://cp2k.org>              */
+/*  Copyright 2000-2025 CP2K developers group <https://cp2k.org>              */
 /*                                                                            */
 /*  SPDX-License-Identifier: BSD-3-Clause                                     */
 /*----------------------------------------------------------------------------*/
@@ -1074,6 +1074,7 @@ void grid_dgemm_integrate_task_list(
 
   if (ctx->scratch == NULL)
     ctx->scratch = malloc(hab_blocks->size * max_threads);
+  assert(ctx->scratch != NULL);
 
   // #pragma omp parallel for
   for (int level = 0; level < ctx->nlevels; level++) {

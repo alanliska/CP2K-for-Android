@@ -1,6 +1,6 @@
 !--------------------------------------------------------------------------------------------------!
 !   CP2K: A general program to perform molecular dynamics simulations                              !
-!   Copyright 2000-2024 CP2K developers group <https://cp2k.org>                                   !
+!   Copyright 2000-2025 CP2K developers group <https://cp2k.org>                                   !
 !                                                                                                  !
 !   SPDX-License-Identifier: GPL-2.0-or-later                                                      !
 !--------------------------------------------------------------------------------------------------!
@@ -28,7 +28,7 @@ MODULE qs_tddfpt2_soc
                                               cp_dbcsr_sm_fm_multiply
    USE cp_fm_basic_linalg,              ONLY: cp_fm_scale,&
                                               cp_fm_transpose,&
-                                              cp_fm_upper_to_full
+                                              cp_fm_uplo_to_full
    USE cp_fm_struct,                    ONLY: cp_fm_struct_create,&
                                               cp_fm_struct_release,&
                                               cp_fm_struct_type
@@ -1796,7 +1796,7 @@ CONTAINS
                                  t_firstcol=1 + nsg + 2*ntp + 1)
 
          ! Symmetrize the matrix (only upper triangle built)
-         CALL cp_fm_upper_to_full(amew_op(i), work_fm)
+         CALL cp_fm_uplo_to_full(amew_op(i), work_fm)
 
       END DO !i
 

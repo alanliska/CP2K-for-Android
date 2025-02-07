@@ -1,6 +1,6 @@
 !--------------------------------------------------------------------------------------------------!
 !   CP2K: A general program to perform molecular dynamics simulations                              !
-!   Copyright 2000-2024 CP2K developers group <https://cp2k.org>                                   !
+!   Copyright 2000-2025 CP2K developers group <https://cp2k.org>                                   !
 !                                                                                                  !
 !   SPDX-License-Identifier: GPL-2.0-or-later                                                      !
 !--------------------------------------------------------------------------------------------------!
@@ -43,6 +43,7 @@ MODULE qs_dispersion_utils
    CHARACTER(len=*), PARAMETER, PRIVATE :: moduleN = 'qs_dispersion_utils'
 
    PUBLIC :: qs_dispersion_env_set, qs_write_dispersion
+   PUBLIC :: cellhash
 
 ! **************************************************************************************************
 CONTAINS
@@ -122,7 +123,8 @@ CONTAINS
                CALL section_vals_val_get(pp_section, "REFERENCE_FUNCTIONAL", explicit=exfun)
                CPASSERT(exfun)
                IF (dispersion_env%pp_type == vdw_pairpot_dftd3) THEN
-                  CALL qs_scaling_dftd3(dispersion_env%s6, dispersion_env%sr6, dispersion_env%s8, vdw_section)
+                  CALL qs_scaling_dftd3(dispersion_env%s6, dispersion_env%sr6, &
+                                        dispersion_env%s8, vdw_section)
                ELSE IF (dispersion_env%pp_type == vdw_pairpot_dftd3bj) THEN
                   CALL qs_scaling_dftd3bj(dispersion_env%s6, dispersion_env%a1, dispersion_env%s8, &
                                           dispersion_env%a2, vdw_section)
@@ -155,13 +157,39 @@ CONTAINS
             dispersion_env%eps_cn = 0._dp
          END IF
          IF (dispersion_env%pp_type == vdw_pairpot_dftd4) THEN
-            CALL section_vals_val_get(pp_section, "REFERENCE_FUNCTIONAL", explicit=exfun)
-            CPASSERT(exfun)
-            CALL section_vals_val_get(vdw_section, "PAIR_POTENTIAL%REFERENCE_FUNCTIONAL", &
-                                      c_val=dispersion_env%ref_functional)
+            CALL section_vals_val_get(pp_section, "D4_SCALING", explicit=explicit)
+            IF (.NOT. explicit) THEN
+               CALL section_vals_val_get(pp_section, "REFERENCE_FUNCTIONAL", explicit=exfun)
+               IF (.NOT. exfun) THEN
+                  CPABORT("D4 vdW REFERENCE_FUNCTIONAL or D4_SCALING expected")
+               ELSE
+                  CALL section_vals_val_get(vdw_section, &
+                                            "PAIR_POTENTIAL%REFERENCE_FUNCTIONAL", &
+                                            c_val=dispersion_env%ref_functional)
+               END IF
+            ELSE
+               CALL section_vals_val_get(pp_section, "D4_SCALING", r_vals=scal)
+               dispersion_env%s6 = scal(1)
+               dispersion_env%a1 = scal(2)
+               dispersion_env%s8 = scal(3)
+               dispersion_env%a2 = scal(4)
+               dispersion_env%sr6 = 0.0_dp
+               dispersion_env%ref_functional = "none"
+            END IF
+            CALL section_vals_val_get(pp_section, "EPS_CN", r_val=dispersion_env%eps_cn)
+            CALL section_vals_val_get(pp_section, "D4_REFERENCE_CODE", &
+                                      l_val=dispersion_env%d4_reference_code)
+            CALL section_vals_val_get(pp_section, "D4_DEBUG", l_val=dispersion_env%d4_debug)
             CALL section_vals_val_get(pp_section, "D4_CUTOFF", r_val=dispersion_env%rc_d4)
             CALL section_vals_val_get(pp_section, "D4_CN_CUTOFF", r_val=dispersion_env%rc_cn)
             CALL section_vals_val_get(pp_section, "FACTOR_S9_TERM", r_val=dispersion_env%s9)
+            !C9 term default=T for D4
+            CALL section_vals_val_get(pp_section, "CALCULATE_C9_TERM", explicit=exfun)
+            IF (exfun) THEN
+               CALL section_vals_val_get(pp_section, "CALCULATE_C9_TERM", l_val=dispersion_env%doabc)
+            ELSE
+               dispersion_env%doabc = .TRUE.
+            END IF
          END IF
          CALL section_vals_val_get(pp_section, "R_CUTOFF", r_val=dispersion_env%rc_disp)
          CALL section_vals_val_get(pp_section, "PARAMETER_FILE_NAME", &
@@ -1146,6 +1174,40 @@ CONTAINS
 
    END SUBROUTINE qs_scaling_dftd3bj
 
+! **************************************************************************************************
+!> \brief ...
+!> \param cell ...
+!> \param ncell ...
+!> \return ...
+! **************************************************************************************************
+   FUNCTION cellhash(cell, ncell) RESULT(hash)
+      INTEGER, DIMENSION(3), INTENT(IN)                  :: cell, ncell
+      INTEGER                                            :: hash
+
+      INTEGER                                            :: ix, iy, iz, nx, ny, nz
+
+      CPASSERT(ALL(ABS(cell) <= ncell))
+
+      ix = cell(1)
+      IF (ix /= 0) THEN
+         ix = 2*ABS(ix) - (1 + SIGN(1, ix))/2
+      END IF
+      iy = cell(2)
+      IF (iy /= 0) THEN
+         iy = 2*ABS(iy) - (1 + SIGN(1, iy))/2
+      END IF
+      iz = cell(3)
+      IF (iz /= 0) THEN
+         iz = 2*ABS(iz) - (1 + SIGN(1, iz))/2
+      END IF
+
+      nx = 2*ncell(1) + 1
+      ny = 2*ncell(2) + 1
+      nz = 2*ncell(3) + 1
+
+      hash = ix*ny*nz + iy*nz + iz + 1
+
+   END FUNCTION cellhash
 ! **************************************************************************************************
 
 END MODULE qs_dispersion_utils

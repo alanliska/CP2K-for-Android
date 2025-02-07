@@ -1,6 +1,6 @@
 !--------------------------------------------------------------------------------------------------!
 !   CP2K: A general program to perform molecular dynamics simulations                              !
-!   Copyright 2000-2024 CP2K developers group <https://cp2k.org>                                   !
+!   Copyright 2000-2025 CP2K developers group <https://cp2k.org>                                   !
 !                                                                                                  !
 !   SPDX-License-Identifier: GPL-2.0-or-later                                                      !
 !--------------------------------------------------------------------------------------------------!
@@ -331,9 +331,7 @@ CONTAINS
          vect(:) = vect(:) - vecr(:)
          rerror = MAXVAL(ABS(vect(:)))
          DEALLOCATE (vect)
-         IF (rerror > threshold) THEN
-            CPWARN("RI solver: CG did not converge properly")
-         END IF
+         CPWARN_IF(rerror > threshold, "RI solver: CG did not converge properly")
       END IF
 
       CALL timestop(handle)

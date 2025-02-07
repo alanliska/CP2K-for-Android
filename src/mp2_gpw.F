@@ -1,6 +1,6 @@
 !--------------------------------------------------------------------------------------------------!
 !   CP2K: A general program to perform molecular dynamics simulations                              !
-!   Copyright 2000-2024 CP2K developers group <https://cp2k.org>                                   !
+!   Copyright 2000-2025 CP2K developers group <https://cp2k.org>                                   !
 !                                                                                                  !
 !   SPDX-License-Identifier: GPL-2.0-or-later                                                      !
 !--------------------------------------------------------------------------------------------------!
@@ -139,9 +139,9 @@ CONTAINS
 
       CHARACTER(LEN=*), PARAMETER                        :: routineN = 'mp2_gpw_main'
 
-      INTEGER :: blacs_grid_layout, bse_lev_virt, color_sub, dimen, dimen_RI, dimen_RI_red, &
-         eri_method, handle, ispin, local_unit_nr, my_group_L_end, my_group_L_size, &
-         my_group_L_start, nmo, nspins, potential_type, ri_metric_type
+      INTEGER :: blacs_grid_layout, bse_lev_virt, color_sub, dimen_RI, dimen_RI_red, eri_method, &
+         handle, ispin, local_unit_nr, my_group_L_end, my_group_L_size, my_group_L_start, nmo, &
+         nspins, potential_type, ri_metric_type
       INTEGER, ALLOCATABLE, DIMENSION(:) :: ends_array_mc, ends_array_mc_block, gw_corr_lev_occ, &
          gw_corr_lev_virt, homo, starts_array_mc, starts_array_mc_block
       INTEGER, DIMENSION(3)                              :: periodic
@@ -212,7 +212,7 @@ CONTAINS
 
       ! check if we want to do imaginary time
       do_im_time = mp2_env%do_im_time
-      do_bse = qs_env%mp2_env%ri_g0w0%do_bse
+      do_bse = qs_env%mp2_env%bse%do_bse
       do_kpoints_cubic_RPA = qs_env%mp2_env%ri_rpa_im_time%do_im_time_kpoints
 
       IF (do_kpoints_cubic_RPA .AND. mp2_env%ri_rpa%do_ri_g0w0) THEN
@@ -229,14 +229,14 @@ CONTAINS
       ELSE
          CALL get_qs_env(qs_env=qs_env, dft_control=dft_control, mos=mos)
       END IF
-      CALL get_mo_set(mo_set=mos_mp2(1), nao=dimen)
-      ALLOCATE (homo(nspins), Eigenval(dimen, nspins), mo_coeff(nspins))
+      CALL get_mo_set(mo_set=mos_mp2(1), nmo=nmo)
+      ALLOCATE (homo(nspins), Eigenval(nmo, nspins), mo_coeff(nspins))
       DO ispin = 1, nspins
          CALL get_mo_set(mo_set=mos_mp2(ispin), &
-                         eigenvalues=mo_eigenvalues, nmo=nmo, homo=homo(ispin), &
+                         eigenvalues=mo_eigenvalues, homo=homo(ispin), &
                          mo_coeff=mo_coeff_ptr)
          mo_coeff(ispin) = mo_coeff_ptr
-         Eigenval(:, ispin) = mo_eigenvalues(:)
+         Eigenval(:, ispin) = mo_eigenvalues(1:nmo)
       END DO
 
       ! a para_env
@@ -265,7 +265,6 @@ CONTAINS
       CALL get_cell(cell=cell, periodic=periodic)
 
       IF (do_im_time) THEN
-
          IF (mp2_env%ri_metric%potential_type == ri_default) THEN
             IF (SUM(periodic) == 1 .OR. SUM(periodic) == 3) THEN
                mp2_env%ri_metric%potential_type = do_potential_id
@@ -302,11 +301,13 @@ CONTAINS
          CALL m_flush(unit_nr)
       END IF
 
-      IF (.NOT. mp2_env%ri_g0w0%print_local_bandgap) THEN
+      ! MG: Disable logger layer for BSE, misses some key information to print cube files properly
+      IF (.NOT. (mp2_env%ri_g0w0%print_local_bandgap .OR. mp2_env%bse%do_nto_analysis)) THEN
          ! a logger
          NULLIFY (logger_sub)
          CALL cp_logger_create(logger_sub, para_env=para_env_sub, &
-                               default_global_unit_nr=local_unit_nr, close_global_unit_on_dealloc=.FALSE.)
+                               default_global_unit_nr=local_unit_nr, &
+                               close_global_unit_on_dealloc=.FALSE.)
          CALL cp_logger_set(logger_sub, local_filename="MP2_localLog")
          ! set to a custom print level (we could also have a different print level for para_env%source)
          logger_sub%iter_info%print_level = mp2_env%mp2_gpw%print_level
@@ -372,7 +373,7 @@ CONTAINS
          ! output the two part of the C matrix (virtual, occupied)
          DO ispin = 1, nspins
 
-            CALL replicate_mat_to_subgroup(para_env, para_env_sub, mo_coeff(ispin), dimen, homo(ispin), mat_munu%matrix, &
+            CALL replicate_mat_to_subgroup(para_env, para_env_sub, mo_coeff(ispin), nmo, homo(ispin), mat_munu%matrix, &
                                            mo_coeff_o(ispin)%matrix, mo_coeff_v(ispin)%matrix, &
                                            mo_coeff_all(ispin)%matrix, mo_coeff_gw(ispin)%matrix, &
                                            my_do_gw, gw_corr_lev_occ(ispin), gw_corr_lev_virt(ispin), do_bse, &
@@ -640,7 +641,7 @@ CONTAINS
 
       CALL cp_blacs_env_release(blacs_env_sub)
 
-      IF (.NOT. mp2_env%ri_g0w0%print_local_bandgap) THEN
+      IF (.NOT. (mp2_env%ri_g0w0%print_local_bandgap .OR. mp2_env%bse%do_nto_analysis)) THEN
          CALL cp_rm_default_logger()
          CALL cp_logger_release(logger_sub)
       END IF

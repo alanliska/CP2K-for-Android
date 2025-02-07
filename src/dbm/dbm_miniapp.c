@@ -1,6 +1,6 @@
 /*----------------------------------------------------------------------------*/
 /*  CP2K: A general program to perform molecular dynamics simulations         */
-/*  Copyright 2000-2024 CP2K developers group <https://cp2k.org>              */
+/*  Copyright 2000-2025 CP2K developers group <https://cp2k.org>              */
 /*                                                                            */
 /*  SPDX-License-Identifier: BSD-3-Clause                                     */
 /*----------------------------------------------------------------------------*/
@@ -50,6 +50,7 @@ static dbm_matrix_t *create_some_matrix(const int nrows, const int ncols,
   // Create distribution.
   int *row_dist = malloc(nrows * sizeof(int));
   int *col_dist = malloc(ncols * sizeof(int));
+  assert(row_dist != NULL && col_dist != NULL);
   for (int i = 0; i < nrows; i++) {
     row_dist[i] = i % cart_dims[0];
   }
@@ -65,6 +66,7 @@ static dbm_matrix_t *create_some_matrix(const int nrows, const int ncols,
   // Create matrix.
   int *row_sizes = malloc(nrows * sizeof(int));
   int *col_sizes = malloc(ncols * sizeof(int));
+  assert(row_sizes != NULL && col_sizes != NULL);
   for (int i = 0; i < nrows; i++) {
     row_sizes[i] = row_size;
   }
@@ -103,6 +105,7 @@ static void reserve_all_blocks(dbm_matrix_t *matrix) {
     }
     int *reserve_row = malloc(nblocks * sizeof(int));
     int *reserve_col = malloc(nblocks * sizeof(int));
+    assert(reserve_row != NULL && reserve_col != NULL);
     int iblock = 0;
 #pragma omp for collapse(2)
     for (int row = 0; row < nrows; row++) {
@@ -271,11 +274,12 @@ int main(int argc, char *argv[]) {
         continue;
       }
       if (0 < mnk[0]) { /* valid MxNxK? */
-        const int extra = (NULL == arg ? 0 : atoi(arg));
-        int nm, nn, nk;
-        if (0 < extra) {
-          nn = nk = 1;
-          nm = extra;
+        int nm = (NULL == arg ? 0 : atoi(arg)), nn, nk;
+        if (0 < nm) {
+          arg = strtok(NULL, delims);
+          nn = (NULL == arg ? 1 : atoi(arg));
+          arg = strtok(NULL, delims);
+          nk = (NULL == arg ? 1 : atoi(arg));
         } else { /* default */
           nm = nn = nk = 128;
         }
@@ -285,7 +289,7 @@ int main(int argc, char *argv[]) {
       } else {
         fprintf(stderr, "ERROR: invalid argument(s)\n");
         result = EXIT_FAILURE;
-        i = argc;
+        i = argc; /* break */
       }
     }
     if (NULL != file) {
